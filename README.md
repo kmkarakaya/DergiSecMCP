@@ -472,7 +472,7 @@ Bu makale konusu icin hem UBYT listesinde olan hem de Elsevier veya Wiley APC de
 
 ## 10. MCP Tool'lari
 
-Server yedi tool sunar:
+Server sekiz tool sunar:
 
 ```text
 search_journals(query: str, limit: int = 10)
@@ -515,6 +515,8 @@ find_journal_candidates(
 ```
 
 Ajanin cikardigi anahtar kelimeler, indeksler ve sayisal filtrelerle aday dergi listesi uretir.
+
+Bu tool hizli yerel aday filtreleme icindir. Derginin gercek aims/scope uygunlugunu tek basina dogrulamaz.
 
 APC filtreleri:
 
@@ -582,6 +584,61 @@ check_multiple_journal_support(
 ```
 
 Birden fazla dergi icin UBYT ve APC destek durumunu tek cagrida kontrol eder. Ozellikle "Bu 3 dergi icinden hangilerinin yayin ucretleri karsilaniyor?" gibi follow-up sorularda ajanin tek tek birden cok tool cagrisi yapmasi yerine bu tool tercih edilmelidir.
+
+```text
+prepare_scope_review_candidates(
+  required_terms: list[str] = [],
+  optional_terms: list[str] = [],
+  exclude_terms: list[str] = [],
+  indexes: list[str] = [],
+  require_apc: bool = false,
+  apc_providers: list[str] = [],
+  source: str | None = None,
+  min_mep_score: float | None = None,
+  max_payment_tl: int | None = None,
+  sort_by: str = "relevance",
+  limit: int = 10
+)
+```
+
+Bu tool closed-set shortlist uretir. Agent web'de yeni dergi kesfetmez; yalnizca bu tool'un dondurdugu adaylarin resmi aims/scope sayfalarini dogrular.
+
+Donen alanlar arasinda su alanlar bulunur:
+
+```text
+closed_set_only
+candidate_ids
+web_verification_policy
+candidates[].candidate_id
+candidates[].canonical_title
+candidates[].issn
+candidates[].eissn
+candidates[].preferred_url
+candidates[].verification_query
+candidates[].must_match_identifiers
+candidates[].scope_hints
+```
+
+Ornek closed-set kullanim akisi:
+
+```text
+prepare_scope_review_candidates(
+  optional_terms=["neuroradiology", "radiology", "medical imaging", "brain", "mri", "hemorrhage"],
+  indexes=["SCIE"],
+  require_apc=true,
+  apc_providers=["elsevier", "wiley"],
+  sort_by="relevance",
+  limit=5
+)
+```
+
+Bu akista agent su kurala uymak zorundadir:
+
+```text
+Web yalnizca donen candidate_id listesindeki dergileri dogrulamak icin kullanilir.
+Listede olmayan hicbir dergi final oneriye eklenmez.
+Resmi sayfa canonical title veya ISSN/eISSN ile eslesmiyorsa aday reddedilir.
+```
 
 ```text
 recommend_journals_for_topic(topic: str, limit: int = 20)

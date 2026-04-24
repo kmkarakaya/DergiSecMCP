@@ -152,6 +152,90 @@ def attach_apc_support(
     return payload
 
 
+def _unique_preserve_order(values: list[Any]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for value in values:
+        text = str(value).strip() if value is not None else ""
+        if text and text not in seen:
+            seen.add(text)
+            result.append(text)
+    return result
+
+
+def _candidate_id_from_match(match: dict[str, Any]) -> str:
+    issn = normalize_number(match.get("issn"))
+    eissn = normalize_number(match.get("eissn"))
+    if issn:
+        return f"ubyt:{issn}"
+    if eissn:
+        return f"ubyt:{eissn}"
+    normalized_title = normalize_text(match.get("dergi_adi")).replace(" ", "-")
+    return f"ubyt:title:{normalized_title}"
+
+
+def _candidate_known_urls(match: dict[str, Any]) -> list[str]:
+    return _unique_preserve_order(
+        [apc_match.get("url") for apc_match in match.get("apc_matches", []) if apc_match.get("url")]
+    )
+
+
+def _candidate_title_aliases(match: dict[str, Any]) -> list[str]:
+    return _unique_preserve_order(
+        [match.get("dergi_adi")]
+        + [apc_match.get("journal_title") for apc_match in match.get("apc_matches", [])]
+    )
+
+
+def _candidate_scope_hints(match: dict[str, Any]) -> dict[str, list[str]]:
+    return {
+        "disciplines": _unique_preserve_order(
+            [apc_match.get("discipline") for apc_match in match.get("apc_matches", [])]
+        ),
+        "subjects": _unique_preserve_order(
+            [apc_match.get("subject") for apc_match in match.get("apc_matches", [])]
+        ),
+    }
+
+
+def _scope_review_candidate(match: dict[str, Any], rank: int) -> dict[str, Any]:
+    title_aliases = _candidate_title_aliases(match)
+    known_urls = _candidate_known_urls(match)
+    identifiers = _unique_preserve_order([match.get("issn"), match.get("eissn")])
+    scope_hints = _candidate_scope_hints(match)
+
+    verification_terms = [title_aliases[0]] if title_aliases else []
+    verification_terms.extend(identifiers)
+    if scope_hints["subjects"]:
+        verification_terms.append(scope_hints["subjects"][0])
+
+    return {
+        "candidate_id": _candidate_id_from_match(match),
+        "canonical_title": match.get("dergi_adi"),
+        "title_aliases": title_aliases,
+        "issn": match.get("issn"),
+        "eissn": match.get("eissn"),
+        "ubyt_incentive_eligible": match.get("ubyt_incentive_eligible", True),
+        "apc_funding_eligible": match.get("apc_funding_eligible", False),
+        "apc_providers": match.get("apc_providers", []),
+        "known_urls": known_urls,
+        "preferred_url": known_urls[0] if known_urls else None,
+        "verification_query": " ".join(term for term in verification_terms if term),
+        "must_match_identifiers": _unique_preserve_order(title_aliases + identifiers),
+        "scope_hints": scope_hints,
+        "local_rank": rank,
+        "local_match_reason": {
+            "match_score": match.get("match_score"),
+            "matched_required_terms": match.get("matched_required_terms", []),
+            "matched_optional_terms": match.get("matched_optional_terms", []),
+            "note": (
+                "Local ranking is based on title-term overlap and metadata filters only. "
+                "Final suitability must be verified from the official aims/scope page."
+            ),
+        },
+    }
+
+
 def row_to_journal(row: pd.Series, include_apc: bool = True) -> dict[str, Any]:
     journal = {
         "dergi_adi": json_value(row["Dergi Adı"]),
@@ -393,6 +477,8 @@ def _normalize_terms(terms: Any) -> list[str]:
     seen: set[str] = set()
     for term in terms:
         normalized = normalize_text(term)
+
+
         if normalized and normalized not in seen:
             normalized_terms.append(normalized)
             seen.add(normalized)
@@ -404,6 +490,7 @@ def _normalize_indexes(indexes: Any) -> list[str]:
         return []
     if isinstance(indexes, str):
         indexes = [indexes]
+
 
     normalized_indexes: list[str] = []
     for index in indexes:
@@ -861,6 +948,77 @@ def find_journal_candidates(
         "sort_by": sort,
         "total": len(rows),
         "matches": matches,
+    }
+
+
+@mcp.tool()
+def prepare_scope_review_candidates(
+    required_terms: list[str] = [],
+    optional_terms: list[str] = [],
+    exclude_terms: list[str] = [],
+    indexes: list[str] = [],
+    require_apc: bool = False,
+    apc_providers: list[str] = [],
+    source: str | None = None,
+    min_mep_score: float | None = None,
+    max_payment_tl: int | None = None,
+    sort_by: str = "relevance",
+    limit: int = 10,
+) -> dict[str, Any]:
+    """Return a closed-set shortlist from local UBYT/APC data only.
+
+    Agents must not recommend journals outside returned candidate_ids.
+    Web use is allowed only to verify official aims/scope pages for returned candidates.
+    A page must match the canonical title or ISSN/eISSN exactly before it can be used.
+    """
+    base = find_journal_candidates(
+        required_terms=required_terms,
+        optional_terms=optional_terms,
+        exclude_terms=exclude_terms,
+        indexes=indexes,
+        require_ubyt=True,
+        require_apc=require_apc,
+        apc_providers=apc_providers,
+        source=source,
+        min_mep_score=min_mep_score,
+        max_payment_tl=max_payment_tl,
+        sort_by=sort_by,
+        limit=limit,
+    )
+
+    candidates = [
+        _scope_review_candidate(match, rank)
+        for rank, match in enumerate(base["matches"], start=1)
+    ]
+
+    return {
+        "closed_set_only": True,
+        "candidate_total": len(candidates),
+        "candidate_ids": [candidate["candidate_id"] for candidate in candidates],
+        "web_verification_policy": {
+            "discover_new_journals": False,
+            "exact_match_required": True,
+            "preferred_pages": [
+                "official_journal_homepage",
+                "official_aims_scope_page",
+                "official_publisher_journal_page",
+            ],
+            "must_not_recommend_outside_candidates": True,
+        },
+        "selection_note": (
+            "Use web only to verify scope for returned candidates. "
+            "Do not introduce journals outside this shortlist."
+        ),
+        "filters": {
+            "required_terms": base["required_terms"],
+            "optional_terms": base["optional_terms"],
+            "exclude_terms": base["exclude_terms"],
+            "indexes": base["indexes"],
+            "require_apc": base["require_apc"],
+            "apc_providers": base["apc_providers"],
+            "sort_by": base["sort_by"],
+        },
+        "candidates": candidates,
     }
 
 
