@@ -267,6 +267,115 @@ Ornek konu:
 Beyin MR goruntulerinden kanama tespiti yapan yapay zeka yayini
 ```
 
+Serbest dogal dil sorgu ornegi:
+
+```text
+Beyin kanamasinin ne zaman olustugunu MR goruntulerinden tespit eden bir goruntu isleme algoritmasi gelistirdim. Hangi dergilere gonderebilirim, ilk 3 dergiyi ilgi sirasina gore siralayarak ver.
+```
+
+Bu tip bir istekte beklenen kullanim sekli sunlardir:
+
+- Ajan once konu bilesenlerini ayirir: `brain`, `hemorrhage`, `timing/onset`, `MR/MRI`, `image processing`, `algorithm`.
+- Ardindan klinik uygunlugu yuksek alan terimlerini uretir: `neuroradiology`, `radiology`, `medical imaging`, `medical image analysis`.
+- MCP server'a dogrudan serbest metinle anlamsal secim yaptirmak yerine `find_journal_candidates` ile filtreli aday listesi cikarir.
+- Son asamada ajan bu adaylar icinden ilk 3 dergiyi ilgi sirasina gore aciklayarak sunar.
+
+Bu sorgu icin ajan sunu benzeri bir arac cagrisi yapabilir:
+
+```text
+find_journal_candidates(
+  optional_terms=["neuroradiology", "radiology", "medical imaging", "medical image analysis", "brain", "mri", "hemorrhage", "detection"],
+  indexes=["SCIE"],
+  require_ubyt=true,
+  sort_by="relevance",
+  limit=15
+)
+```
+
+Beklenen cevap formati yalnizca ham dergi listesi degil, kisa gerekceli bir siralamadir. Bu ornek sorgu icin uygun bir cevap soyle olabilir:
+
+```text
+1. AMERICAN JOURNAL OF NEURORADIOLOGY
+  Beyin kanamasi, MR ve klinik goruntuleme yorumu acisindan en dogrudan uyumlu aday.
+
+2. Clinical Neuroradiology
+  MR tabanli nororadyolojik analizler ve klinik dogrulama icin guclu bir secenek.
+
+3. IEEE TRANSACTIONS ON MEDICAL IMAGING
+  Calismanin asil katkisi yeni bir goruntu isleme algoritmasiysa yontem odakli olarak cok guclu aday.
+```
+
+Kullanici ilk cevapten sonra su takip sorgusunu girebilir:
+
+```text
+Bu 3 dergi icinden hangilerinin yayin ucretleri karsilaniyor?
+```
+
+Bu noktada beklenen kullanim sekli sudur:
+
+- Ajan once onceki mesajdaki 3 dergiyi baglamdan tasir.
+- Tercihen `check_multiple_journal_support` ile bu dergileri tek cagrida kontrol eder.
+- Cevapta yalnizca APC destegi olan dergileri net sekilde belirtir; sadece UBYT tesviki olanlari "yayin ucreti karsilanmiyor" olarak ayirir.
+
+Bu takip sorgusu icin arac kullanim mantigi soyle olabilir:
+
+```text
+check_multiple_journal_support(
+  queries=[
+    "AMERICAN JOURNAL OF NEURORADIOLOGY",
+    "Clinical Neuroradiology",
+    "IEEE TRANSACTIONS ON MEDICAL IMAGING"
+  ]
+)
+```
+
+Beklenen cevap soyle olabilir:
+
+```text
+Bu 3 dergi icinde yayin ucreti karsilanan tek dergi Clinical Neuroradiology'dir.
+
+AMERICAN JOURNAL OF NEURORADIOLOGY:
+UBYT listesinde var, ancak APC destegi gorunmuyor.
+
+IEEE TRANSACTIONS ON MEDICAL IMAGING:
+UBYT listesinde var, ancak APC destegi gorunmuyor.
+```
+
+Kullanici daha sonra tek bir dergi icin su sorguyu da sorabilir:
+
+```text
+Brain Imaging and Behavior adli dergi UBYT listesinde mi? APC karsilaniyor mu?
+```
+
+Bu sorguda ajan, tek adimda `check_journal_support` aracini kullanabilir:
+
+```text
+check_journal_support(query="Brain Imaging and Behavior")
+```
+
+Beklenen cevap, APC destegi bilgisini veri kaynagi ile birlikte dikkatli vermelidir:
+
+```text
+Brain Imaging and Behavior UBYT listesinde gorunuyor.
+APC destegi de var gorunuyor.
+
+Ancak burada dikkat edilmesi gereken nokta sunudur:
+APC eslesmesi `Elsevier.xlsx` veri dosyasindaki kayittan geliyor, fakat eslesen satirin `publisher_or_imprint` alani `Springer`.
+```
+
+Bu nedenle ajan, bu tip durumlarda "Elsevier listesinde var" demek yerine daha kesin bir dil kullanmalidir:
+
+```text
+Mevcut MCP veri dosyasina gore APC eslesmesi bulundu.
+Eslesme kaynagi: Elsevier.xlsx
+Imprint/Yayinci: Springer
+Eslesme alani: eISSN
+```
+
+Bu ornek onemlidir; cunku veri dosyasinin adi ile derginin fiili imprint/yayinci bilgisi her zaman ayni sey olmayabilir. Kullanici listeyi gozle kontrol ettiginde celiski gordugunu dusunurse, yanit `raw_source_file`, `publisher_or_imprint` ve eslesme tipini birlikte aciklamalidir.
+
+Buradaki beklenti onemlidir: ilgi sirasi yalnizca MEP puanina gore verilmez. Ajan, konu uyumunu onceleyip gerekirse daha yuksek puanli ama kapsamsal olarak daha genel dergileri alt siraya koyabilir.
+
 Ajan bu konudan su gibi dergi anahtar kelimeleri cikarabilir:
 
 ```text
@@ -304,7 +413,7 @@ Bu makale konusu icin hem UBYT listesinde olan hem de Elsevier veya Wiley APC de
 
 ## 10. MCP Tool'lari
 
-Server alti tool sunar:
+Server yedi tool sunar:
 
 ```text
 search_journals(query: str, limit: int = 10)
@@ -391,9 +500,29 @@ ubyt_incentive_eligible
 apc_funding_eligible
 both_eligible
 apc_providers
+apc_evidence
 ubyt_matches
 apc_matches
 ```
+
+`apc_evidence` ozeti, ozellikle veri kaynagi ile imprint/yayinci farkli olabildiginde kullanislidir. Ornek alanlar:
+
+```text
+match_count
+source_files
+publishers_or_imprints
+match_types
+best_match
+```
+
+```text
+check_multiple_journal_support(
+  queries: list[str] = [],
+  numbers: list[str] = []
+)
+```
+
+Birden fazla dergi icin UBYT ve APC destek durumunu tek cagrida kontrol eder. Ozellikle "Bu 3 dergi icinden hangilerinin yayin ucretleri karsilaniyor?" gibi follow-up sorularda ajanin tek tek birden cok tool cagrisi yapmasi yerine bu tool tercih edilmelidir.
 
 ```text
 recommend_journals_for_topic(topic: str, limit: int = 20)

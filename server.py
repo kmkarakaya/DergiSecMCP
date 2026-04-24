@@ -92,6 +92,66 @@ def row_to_apc_journal(row: pd.Series) -> dict[str, Any]:
     return journal
 
 
+def apc_evidence_summary(apc_matches: list[dict[str, Any]]) -> dict[str, Any]:
+    if not apc_matches:
+        return {
+            "match_count": 0,
+            "source_files": [],
+            "publishers_or_imprints": [],
+            "match_types": [],
+            "best_match": None,
+        }
+
+    best_match = max(
+        apc_matches,
+        key=lambda match: (
+            int(match.get("match_score") or 0),
+            normalize_text(match.get("journal_title")),
+            normalize_text(match.get("publisher_or_imprint")),
+        ),
+    )
+    return {
+        "match_count": len(apc_matches),
+        "source_files": sorted(
+            {match["raw_source_file"] for match in apc_matches if match.get("raw_source_file")}
+        ),
+        "publishers_or_imprints": sorted(
+            {
+                match["publisher_or_imprint"]
+                for match in apc_matches
+                if match.get("publisher_or_imprint")
+            }
+        ),
+        "match_types": sorted({match["match_type"] for match in apc_matches if match.get("match_type")}),
+        "best_match": {
+            "provider": best_match.get("provider"),
+            "journal_title": best_match.get("journal_title"),
+            "issn": best_match.get("issn"),
+            "eissn": best_match.get("eissn"),
+            "publisher_or_imprint": best_match.get("publisher_or_imprint"),
+            "raw_source_file": best_match.get("raw_source_file"),
+            "match_type": best_match.get("match_type"),
+            "match_score": best_match.get("match_score"),
+        },
+    }
+
+
+def attach_apc_support(
+    payload: dict[str, Any],
+    apc_matches: list[dict[str, Any]],
+    *,
+    ubyt_eligible: bool,
+) -> dict[str, Any]:
+    apc_providers = sorted({match["provider"] for match in apc_matches})
+    payload["ubyt_incentive_eligible"] = ubyt_eligible
+    payload["apc_funding_eligible"] = bool(apc_matches)
+    payload["apc_providers"] = apc_providers
+    payload["apc_matches"] = apc_matches
+    payload["apc_evidence"] = apc_evidence_summary(apc_matches)
+    payload["both_eligible"] = bool(ubyt_eligible and apc_matches)
+    return payload
+
+
 def row_to_journal(row: pd.Series, include_apc: bool = True) -> dict[str, Any]:
     journal = {
         "dergi_adi": json_value(row["Dergi Adı"]),
@@ -104,14 +164,11 @@ def row_to_journal(row: pd.Series, include_apc: bool = True) -> dict[str, Any]:
         "ahci": bool(row["AHCI"]),
         "kaynak": json_value(row["Kaynak"]),
         "yil": json_value(row["Yıl"]),
+        "ubyt_incentive_eligible": True,
     }
     if include_apc and "APC_JOURNALS" in globals():
         apc_matches = _find_apc_matches_for_journal_row(row)
-        apc_providers = sorted({match["provider"] for match in apc_matches})
-        journal["apc_funding_eligible"] = bool(apc_matches)
-        journal["apc_providers"] = apc_providers
-        journal["apc_matches"] = apc_matches
-        journal["both_eligible"] = bool(apc_matches)
+        attach_apc_support(journal, apc_matches, ubyt_eligible=True)
     return journal
 
 
@@ -390,8 +447,11 @@ def _numeric_filter(value: Any, minimum: float | None = None, maximum: float | N
     return True
 
 
-def _candidate_sort_key(item: tuple[int, int, pd.Series, list[str], list[str]], sort_by: str):
-    score, index, row, _, _ = item
+def _candidate_sort_key(
+    item: tuple[int, int, pd.Series, list[str], list[str], list[dict[str, Any]]],
+    sort_by: str,
+):
+    score, index, row, _, _, _ = item
     mep_score = json_value(row["Dergi Mep Puanı"]) or 0
     payment = json_value(row["Ödeme (TL)"]) or 0
     journal_name = normalize_text(row["Dergi Adı"])
@@ -680,16 +740,37 @@ def check_journal_support(
                     apc_matches.append(match)
                     apc_seen.add(key)
 
-    apc_providers = sorted({match["provider"] for match in apc_matches})
-    return {
+    result = {
         "query": query,
         "number": number,
-        "ubyt_incentive_eligible": bool(ubyt_matches),
-        "apc_funding_eligible": bool(apc_matches),
-        "both_eligible": bool(ubyt_matches and apc_matches),
-        "apc_providers": apc_providers,
         "ubyt_matches": ubyt_matches,
-        "apc_matches": apc_matches,
+    }
+    attach_apc_support(result, apc_matches, ubyt_eligible=bool(ubyt_matches))
+    return result
+
+
+@mcp.tool()
+def check_multiple_journal_support(
+    queries: list[str] = [],
+    numbers: list[str] = [],
+) -> dict[str, Any]:
+    """Check UBYT and APC support for multiple journals in one call."""
+    results = []
+    for query in queries:
+        if query:
+            results.append(check_journal_support(query=query))
+    for number in numbers:
+        if number:
+            results.append(check_journal_support(number=number))
+
+    return {
+        "queries": queries,
+        "numbers": numbers,
+        "total": len(results),
+        "ubyt_incentive_eligible_count": sum(1 for result in results if result["ubyt_incentive_eligible"]),
+        "apc_funding_eligible_count": sum(1 for result in results if result["apc_funding_eligible"]),
+        "both_eligible_count": sum(1 for result in results if result["both_eligible"]),
+        "results": results,
     }
 
 
@@ -718,7 +799,7 @@ def find_journal_candidates(
     normalized_source = normalize_text(source) if source is not None else None
     sort = sort_by if sort_by in VALID_SORTS else "relevance"
 
-    rows: list[tuple[int, int, pd.Series, list[str], list[str]]] = []
+    rows: list[tuple[int, int, pd.Series, list[str], list[str], list[dict[str, Any]]]] = []
     for index, row in JOURNALS.iterrows():
         journal_name = row["_dergi_adi_norm"]
         if required and not _contains_all_terms(journal_name, required):
@@ -754,18 +835,13 @@ def find_journal_candidates(
         if bool(row["AHCI"]):
             score += 3
 
-        rows.append((score, index, row, matched_required, matched_optional))
+        rows.append((score, index, row, matched_required, matched_optional, apc_matches))
 
     rows.sort(key=lambda item: _candidate_sort_key(item, sort))
     matches = []
-    for score, _, row, matched_required, matched_optional in rows[:result_limit]:
-        journal = row_to_journal(row)
-        apc_matches = _find_apc_matches_for_journal_row(row, selected_apc_providers)
-        apc_providers_result = sorted({match["provider"] for match in apc_matches})
-        journal["apc_funding_eligible"] = bool(apc_matches)
-        journal["apc_providers"] = apc_providers_result
-        journal["apc_matches"] = apc_matches
-        journal["both_eligible"] = bool(apc_matches)
+    for score, _, row, matched_required, matched_optional, apc_matches in rows[:result_limit]:
+        journal = row_to_journal(row, include_apc=False)
+        attach_apc_support(journal, apc_matches, ubyt_eligible=True)
         journal["match_score"] = score
         journal["matched_required_terms"] = matched_required
         journal["matched_optional_terms"] = matched_optional
