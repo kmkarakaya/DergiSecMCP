@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "ubyt": {
+      "type": "stdio",
+      "command": "python",
+      "args": ["${workspaceFolder}/server.py"]
+    }
+  }
+}
