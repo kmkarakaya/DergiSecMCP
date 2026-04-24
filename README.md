@@ -374,6 +374,65 @@ Eslesme alani: eISSN
 
 Bu ornek onemlidir; cunku veri dosyasinin adi ile derginin fiili imprint/yayinci bilgisi her zaman ayni sey olmayabilir. Kullanici listeyi gozle kontrol ettiginde celiski gordugunu dusunurse, yanit `raw_source_file`, `publisher_or_imprint` ve eslesme tipini birlikte aciklamalidir.
 
+Kullanici toplu dergi kontrolu icin su tip bir sorgu da girebilir:
+
+```text
+Asagidaki dergiler UBYT listesinde mi?
+IEEE Journal of Translational Engineering in Health and Medicine
+Health Information Management Journal
+Health Informatics Journal
+```
+
+Bu durumda ajan, dergi adlarini ayri ayri cikartip tek seferde `check_multiple_journal_support` aracini kullanabilir:
+
+```text
+check_multiple_journal_support(
+  queries=[
+    "IEEE Journal of Translational Engineering in Health and Medicine",
+    "Health Information Management Journal",
+    "Health Informatics Journal"
+  ]
+)
+```
+
+Beklenen cevap soyle olabilir:
+
+```text
+Bu uc dergi de UBYT listesinde gorunuyor.
+
+IEEE Journal of Translational Engineering in Health and Medicine:
+UBYT: Evet
+
+Health Information Management Journal:
+UBYT: Evet
+
+Health Informatics Journal:
+UBYT: Evet
+```
+
+Kullanici bunun hemen ardindan su follow-up sorgusunu girebilir:
+
+```text
+Evet. APC durumlari.
+```
+
+Bu follow-up icin ajan, onceki mesajdaki ayni 3 dergiyi baglamdan tasiyip yine `check_multiple_journal_support` ile toplu kontrol yapabilir.
+
+Beklenen cevap soyle olabilir:
+
+```text
+Bu uc dergi icin mevcut Elsevier/Wiley APC veri setinde APC destegi gorunmuyor.
+
+IEEE Journal of Translational Engineering in Health and Medicine:
+APC: Gorunmuyor
+
+Health Information Management Journal:
+APC: Gorunmuyor
+
+Health Informatics Journal:
+APC: Gorunmuyor
+```
+
 Buradaki beklenti onemlidir: ilgi sirasi yalnizca MEP puanina gore verilmez. Ajan, konu uyumunu onceleyip gerekirse daha yuksek puanli ama kapsamsal olarak daha genel dergileri alt siraya koyabilir.
 
 Ajan bu konudan su gibi dergi anahtar kelimeleri cikarabilir:
