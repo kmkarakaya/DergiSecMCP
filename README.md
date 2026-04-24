@@ -276,33 +276,33 @@ Beyin kanamasinin ne zaman olustugunu MR goruntulerinden tespit eden bir goruntu
 Bu tip bir istekte beklenen kullanim sekli sunlardir:
 
 - Ajan once konu bilesenlerini ayirir: `brain`, `hemorrhage`, `timing/onset`, `MR/MRI`, `image processing`, `algorithm`.
-- Ardindan klinik uygunlugu yuksek alan terimlerini uretir: `neuroradiology`, `radiology`, `medical imaging`, `medical image analysis`.
-- MCP server'a dogrudan serbest metinle anlamsal secim yaptirmak yerine `find_journal_candidates` ile filtreli aday listesi cikarir.
-- Son asamada ajan bu adaylar icinden ilk 3 dergiyi ilgi sirasina gore aciklayarak sunar.
+- Ardindan yontem uygunlugu yuksek alan terimlerini uretir: `medical imaging`, `medical image analysis`, `image processing`, `computer assisted radiology`, `mri`.
+- Klinik olarak ilgili ama yontem odagi zayif dergileri otomatik ust siraya tasimamak icin closed-set shortlist uretir.
+- `prepare_scope_review_candidates` ile yalnizca UBYT/APC veri kumesinden aday listesi cikarir; web'i yeni dergi bulmak icin degil, bu adaylarin resmi aims/scope sayfalarini dogrulamak icin kullanir.
+- Son asamada ajan yalnizca dogrulanan adaylar icinden ilk 3 dergiyi ilgi sirasina gore aciklayarak sunar.
 
 Bu sorgu icin ajan sunu benzeri bir arac cagrisi yapabilir:
 
 ```text
-find_journal_candidates(
-  optional_terms=["neuroradiology", "radiology", "medical imaging", "medical image analysis", "brain", "mri", "hemorrhage", "detection"],
+prepare_scope_review_candidates(
+  optional_terms=["medical imaging", "medical image analysis", "image processing", "computer assisted radiology", "brain", "mri", "hemorrhage", "detection"],
   indexes=["SCIE"],
-  require_ubyt=true,
   sort_by="relevance",
-  limit=15
+  limit=10
 )
 ```
 
 Beklenen cevap formati yalnizca ham dergi listesi degil, kisa gerekceli bir siralamadir. Bu ornek sorgu icin uygun bir cevap soyle olabilir:
 
 ```text
-1. AMERICAN JOURNAL OF NEURORADIOLOGY
-  Beyin kanamasi, MR ve klinik goruntuleme yorumu acisindan en dogrudan uyumlu aday.
+1. IEEE TRANSACTIONS ON MEDICAL IMAGING
+  MRI, medical image processing, pattern recognition ve machine learning kapsaminda dogrudan yontem odakli en guclu aday.
 
-2. Clinical Neuroradiology
-  MR tabanli nororadyolojik analizler ve klinik dogrulama icin guclu bir secenek.
+2. Medical Image Analysis
+  Calismanin asil katkisi yeni bir goruntu isleme veya derin ogrenme yontemiyse, yontem makalesi olarak cok uygun bir secenek.
 
-3. IEEE TRANSACTIONS ON MEDICAL IMAGING
-  Calismanin asil katkisi yeni bir goruntu isleme algoritmasiysa yontem odakli olarak cok guclu aday.
+3. COMPUTERIZED MEDICAL IMAGING AND GRAPHICS
+  AI-enabled imaging solutions ve uygulamali medikal goruntu analizi tarafinda guclu, yontem agirlikli bir alternatiftir.
 ```
 
 Kullanici ilk cevapten sonra su takip sorgusunu girebilir:
@@ -315,16 +315,16 @@ Bu noktada beklenen kullanim sekli sudur:
 
 - Ajan once onceki mesajdaki 3 dergiyi baglamdan tasir.
 - Tercihen `check_multiple_journal_support` ile bu dergileri tek cagrida kontrol eder.
-- Cevapta yalnizca APC destegi olan dergileri net sekilde belirtir; sadece UBYT tesviki olanlari "yayin ucreti karsilanmiyor" olarak ayirir.
+- Cevapta bu 3 dergi icin APC destegi gorunmuyorsa bunu acikca soyler; sonradan APC zorunlu hale gelirse yeni bir `require_apc=true` sorgusu ile alternatif shortlist uretir.
 
 Bu takip sorgusu icin arac kullanim mantigi soyle olabilir:
 
 ```text
 check_multiple_journal_support(
   queries=[
-    "AMERICAN JOURNAL OF NEURORADIOLOGY",
-    "Clinical Neuroradiology",
-    "IEEE TRANSACTIONS ON MEDICAL IMAGING"
+    "IEEE TRANSACTIONS ON MEDICAL IMAGING",
+    "Medical Image Analysis",
+    "COMPUTERIZED MEDICAL IMAGING AND GRAPHICS"
   ]
 )
 ```
@@ -332,12 +332,15 @@ check_multiple_journal_support(
 Beklenen cevap soyle olabilir:
 
 ```text
-Bu 3 dergi icinde yayin ucreti karsilanan tek dergi Clinical Neuroradiology'dir.
-
-AMERICAN JOURNAL OF NEURORADIOLOGY:
-UBYT listesinde var, ancak APC destegi gorunmuyor.
+Bu 3 dergi icin mevcut Elsevier/Wiley APC veri setinde yayin ucreti destegi gorunmuyor.
 
 IEEE TRANSACTIONS ON MEDICAL IMAGING:
+UBYT listesinde var, ancak APC destegi gorunmuyor.
+
+Medical Image Analysis:
+UBYT listesinde var, ancak APC destegi gorunmuyor.
+
+COMPUTERIZED MEDICAL IMAGING AND GRAPHICS:
 UBYT listesinde var, ancak APC destegi gorunmuyor.
 ```
 
