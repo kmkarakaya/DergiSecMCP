@@ -9,6 +9,7 @@ const statusCopy = document.getElementById("status-copy");
 const statusSteps = document.getElementById("status-steps");
 const maxPaymentSelect = document.getElementById("max-payment");
 const indexFilterSelect = document.getElementById("index-filter");
+const pageCredit = document.getElementById("page-credit");
 
 const STATUS_PHASES = [
   {
@@ -47,6 +48,22 @@ let statusTimer = null;
 let statusPhaseIndex = 0;
 let statusDotFrame = 0;
 
+function buildVersionStamp(date = new Date()) {
+  const pad = (value) => String(value).padStart(2, "0");
+  const year = String(date.getFullYear());
+  const month = pad(date.getMonth() + 1);
+  const day = pad(date.getDate());
+  const hour = pad(date.getHours());
+  const minute = pad(date.getMinutes());
+  const second = pad(date.getSeconds());
+  return `${year}${month}${day}-${hour}${minute}${second}`;
+}
+
+function renderPageCredit() {
+  if (!pageCredit) return;
+  pageCredit.textContent = `Murat Karakaya Akademi 2026 • Versiyon ${buildVersionStamp()}`;
+}
+
 async function loadFilterOptions() {
   try {
     const response = await fetch("/filters");
@@ -65,11 +82,11 @@ async function loadFilterOptions() {
       indexFilterSelect.innerHTML = payload.index_options
         .map((option) => `<option value="${option.value}">${option.label}</option>`)
         .join("");
-      indexFilterSelect.value = "SCIE";
+      indexFilterSelect.value = "";
     }
   } catch (error) {
     maxPaymentSelect.value = "";
-    indexFilterSelect.value = "SCIE";
+    indexFilterSelect.value = "";
   }
 }
 
@@ -362,6 +379,7 @@ async function submitQuery(event) {
   }
 }
 
+renderPageCredit();
 loadFilterOptions();
 
 function openDrawer(result) {

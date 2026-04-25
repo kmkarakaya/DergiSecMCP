@@ -10,6 +10,8 @@ set "DRY_RUN=0"
 set "SKIP_DOCKER_CHECK=0"
 set "GIT_XET_PATH=C:\Program Files\Git-Xet"
 set "DOCKER_TAG=derrgisec-hf-preflight"
+set "DOCKER_CONTAINER=derrgisec-hf-preflight-container"
+set "DOCKER_TEST_PORT=8870"
 
 if "%SOURCE_DIR:~-1%"=="\" set "SOURCE_DIR=%SOURCE_DIR:~0,-1%"
 
@@ -107,10 +109,29 @@ if "%SKIP_DOCKER_CHECK%"=="1" (
         echo ERROR: docker not found in PATH. Use /skip-docker-check to bypass this preflight.
         exit /b 1
     )
+    where powershell >nul 2>nul || (
+        echo ERROR: powershell not found in PATH. Use /skip-docker-check to bypass this preflight.
+        exit /b 1
+    )
+    docker rm -f %DOCKER_CONTAINER% >nul 2>nul
     docker build -t %DOCKER_TAG% "%SOURCE_DIR%" || (
         echo ERROR: docker build failed. Aborting push.
         exit /b 1
     )
+    docker run -d --rm --name %DOCKER_CONTAINER% -p %DOCKER_TEST_PORT%:7860 %DOCKER_TAG% >nul || (
+        echo ERROR: docker container failed to start. Aborting push.
+        docker image rm %DOCKER_TAG% >nul 2>nul
+        exit /b 1
+    )
+    powershell -NoProfile -Command "$deadline=(Get-Date).AddSeconds(30); $ok=$false; while((Get-Date) -lt $deadline){ try { $response=Invoke-RestMethod -Uri 'http://127.0.0.1:%DOCKER_TEST_PORT%/health' -TimeoutSec 3; if ($response.status -eq 'ok') { $ok=$true; break } } catch {}; Start-Sleep -Milliseconds 500 }; if(-not $ok){ exit 1 }" || (
+        echo ERROR: docker container started but /health did not return status ok.
+        echo --- container logs ---
+        docker logs %DOCKER_CONTAINER%
+        docker rm -f %DOCKER_CONTAINER% >nul 2>nul
+        docker image rm %DOCKER_TAG% >nul 2>nul
+        exit /b 1
+    )
+    docker rm -f %DOCKER_CONTAINER% >nul 2>nul
     docker image rm %DOCKER_TAG% >nul 2>nul
 )
 

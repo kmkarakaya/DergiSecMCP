@@ -21,10 +21,10 @@ from server import prepare_scope_review_candidates
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
-DEFAULT_INDEXES = ["SCIE"]
+DEFAULT_INDEXES: list[str] = []
 DEFAULT_APC_PROVIDERS = ["elsevier", "wiley"]
 INDEX_FILTER_OPTIONS = [
-    {"value": "", "label": "Fark etmez"},
+    {"value": "", "label": "Tümü"},
     {"value": "SCIE", "label": "SCIE"},
     {"value": "SCI", "label": "SCI"},
     {"value": "AHCI", "label": "AHCI"},
@@ -161,7 +161,7 @@ def build_max_payment_options() -> list[dict[str, Any]]:
         if value not in (None, "")
     ]
     if not payment_values:
-        return [{"value": "", "label": "Fark etmez"}]
+        return [{"value": "", "label": "Tümü"}]
 
     min_payment = min(payment_values)
     max_payment = max(payment_values)
@@ -170,7 +170,7 @@ def build_max_payment_options() -> list[dict[str, Any]]:
     if start > end:
         start = end
 
-    options = [{"value": "", "label": "Fark etmez"}]
+    options = [{"value": "", "label": "Tümü"}]
     for amount in range(start, end + 1, 10000):
         formatted = f"{amount:,.0f}".replace(",", ".")
         options.append({"value": amount, "label": f"{formatted} TL ve altı"})

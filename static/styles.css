@@ -65,6 +65,9 @@ body::before {
 }
 
 .hero-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
   padding: 36px;
   min-height: 320px;
 }
@@ -86,16 +89,63 @@ h1,
 }
 
 h1 {
-  font-size: clamp(2.8rem, 5vw, 4.8rem);
-  line-height: 0.94;
+  font-size: clamp(2.1rem, 3.8vw, 3.9rem);
+  line-height: 0.9;
   margin: 14px 0 18px;
-  max-width: 12ch;
+  max-width: none;
+  text-wrap: balance;
 }
 
 .hero-text {
+  margin: 0;
   font-size: 1.05rem;
   max-width: 54ch;
   color: var(--muted);
+}
+
+.reference-panel {
+  margin-top: auto;
+  padding: 18px 20px;
+  border: 1px solid rgba(31, 26, 23, 0.1);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(228, 188, 162, 0.18));
+}
+
+.reference-title {
+  margin: 0 0 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  color: var(--muted);
+}
+
+.reference-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 10px;
+  font-size: 0.88rem;
+}
+
+.reference-list li {
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.reference-list a {
+  color: var(--accent);
+  font-size: 0.86rem;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.reference-list a:hover {
+  color: var(--ink);
+}
+
+.reference-subline {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.84rem;
 }
 
 .query-panel {
@@ -129,29 +179,97 @@ select {
   color: var(--ink);
 }
 
+select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  min-width: 0;
+  border-radius: 16px;
+  padding: 16px 48px 16px 18px;
+  border-color: rgba(31, 26, 23, 0.14);
+  background-color: rgba(255, 255, 255, 0.88);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink) 50%),
+    linear-gradient(135deg, var(--ink) 50%, transparent 50%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(239, 229, 215, 0.92));
+  background-position:
+    calc(100% - 22px) calc(50% - 3px),
+    calc(100% - 16px) calc(50% - 3px),
+    0 0;
+  background-size: 6px 6px, 6px 6px, 100% 100%;
+  background-repeat: no-repeat;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.7),
+    0 8px 18px rgba(49, 34, 24, 0.06);
+  transition: border-color 140ms ease, box-shadow 140ms ease, transform 140ms ease;
+}
+
+select:hover {
+  border-color: rgba(177, 79, 47, 0.3);
+}
+
+select:focus {
+  outline: none;
+  border-color: rgba(177, 79, 47, 0.45);
+  box-shadow: 0 0 0 4px rgba(177, 79, 47, 0.12);
+}
+
 textarea {
   resize: vertical;
   min-height: 160px;
 }
 
 .controls {
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.controls > * {
+  min-width: 0;
 }
 
 .toggle {
-  display: flex;
-  gap: 10px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 12px;
   align-items: center;
+  min-height: 100%;
+  padding: 16px 18px;
+  border: 1px solid rgba(31, 26, 23, 0.08);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(244, 238, 228, 0.92));
+  box-shadow: 0 12px 26px rgba(49, 34, 24, 0.06);
 }
 
 .select-wrap {
-  display: flex;
-  gap: 10px;
-  align-items: center;
+  display: grid;
+  gap: 8px;
+  align-items: start;
+  padding: 12px;
+  border: 1px solid rgba(31, 26, 23, 0.08);
+  border-radius: 20px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(244, 238, 228, 0.92));
+  box-shadow: 0 12px 26px rgba(49, 34, 24, 0.06);
+}
+
+.select-wrap span {
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.toggle input {
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+
+.toggle span {
+  line-height: 1.35;
 }
 
 .submit-button,
@@ -613,8 +731,18 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .metric-grid,
   .drawer-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .controls {
     grid-template-columns: 1fr;
   }
 }

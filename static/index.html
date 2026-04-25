@@ -10,11 +10,31 @@
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">UBYT + APC Journal Navigator</p>
-          <h1>Makaleniz için dergi kapakları gibi akan öneriler</h1>
+          <p class="eyebrow">UBYT + APC Dergileri Tarayın</p>
+          <h1>UBYT ve APC destekli dergileri bulun.</h1>
           <p class="hero-text">
-            Konunuzu veya özetinizi yazın. Sonuçlar her sorguda yeni bir editoryal duvar olarak aksın.
+            Makaleniz için UBYT dergi listesinde olan ve Yayın Ücretleri (APC) karşılanabilecek dergileri bulun. Konunuzu veya özetinizi yazın. Sonuçlar her sorguda yeni bir editoryal duvar olarak aksın.
           </p>
+          <section class="reference-panel" aria-label="Resmî kaynaklar">
+            <p class="reference-title">Resmî kaynaklar</p>
+            <ul class="reference-list">
+              <li>
+                TÜBİTAK Türkiye Adresli Uluslararası Bilimsel Yayınları Teşvik (UBYT) Programı 2026 yılı dergi listesi ilan edilmiştir.
+                <a href="https://cabim.ulakbim.gov.tr/ubyt/" target="_blank" rel="noreferrer">UBYT 2026 Yılı UBYT Programı Dergi Listesi</a>
+              </li>
+              <li>
+                <a href="https://cabim.ulakbim.gov.tr/ekual/e-veri-tabanlari/universiteler/" target="_blank" rel="noreferrer">TÜBİTAK fonlanan yayınevleri listesi</a>
+              </li>
+              <li>
+                <a href="https://authors.wiley.com/author-resources/Journal-Authors/open-access/affiliation-policies-payments/tubitak-agreement.html" target="_blank" rel="noreferrer">Wiley AE Makale Yayımlama Anlaşması</a>
+                <a class="reference-subline" href="https://cabim.ulakbim.gov.tr/wp-content/uploads/sites/4/2026/04/TUBITAK_Tarafindan_Fonlanan-Wiley_AE_DergiListesi.xlsx" target="_blank" rel="noreferrer">Anlaşma kapsamındaki Wiley AE dergi listesi</a>
+              </li>
+              <li>
+                <a href="https://www.springernature.com/gp/open-science/oa-agreements/turkiye/tubitak" target="_blank" rel="noreferrer">Springer Nature AE Makale Yayımlama Anlaşması</a>
+                <a class="reference-subline" href="https://cabim.ulakbim.gov.tr/wp-content/uploads/sites/4/2026/02/sn_2026_list.xlsx" target="_blank" rel="noreferrer">Anlaşma kapsamındaki Springer Nature AE dergi listesi</a>
+              </li>
+            </ul>
+          </section>
         </div>
         <form id="query-form" class="query-panel">
           <label class="field-label" for="query-input">Yayın konusu / özet</label>
@@ -33,7 +53,7 @@
             <label class="select-wrap">
               <span>Maksimum destek miktarı</span>
               <select id="max-payment">
-                <option value="">Fark etmez</option>
+                <option value="">Tümü</option>
               </select>
             </label>
             <label class="select-wrap">
@@ -42,11 +62,11 @@
                 <option value="SCIE">SCIE</option>
                 <option value="SCI">SCI</option>
                 <option value="AHCI">AHCI</option>
-                <option value="">Fark etmez</option>
+                <option value="">Tümü</option>
               </select>
             </label>
             <label class="select-wrap">
-              <span>Sonuç sayısı</span>
+              <span>Dergi Sayısı</span>
               <select id="result-limit">
                 <option value="3">3</option>
                 <option value="5">5</option>
@@ -73,7 +93,7 @@
       </main>
 
       <footer class="page-credit">
-        <p>Katkı ve ilham: Murat Karakaya Akademi</p>
+        <p id="page-credit">Murat Karakaya Akademi 2026</p>
       </footer>
     </div>
 
