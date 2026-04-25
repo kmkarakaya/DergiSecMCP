@@ -7,6 +7,7 @@ set "COMMIT_MESSAGE=Deploy DergiSec to HF Space"
 set "SOURCE_DIR=%~dp0"
 set "WORK_DIR="
 set "DRY_RUN=0"
+set "GIT_XET_PATH=C:\Program Files\Git-Xet"
 
 if /I "%~1"=="/help" goto :help
 if /I "%~1"=="-h" goto :help
@@ -23,6 +24,8 @@ if not "%~3"=="" set "COMMIT_MESSAGE=%~3"
 
 if "%SOURCE_DIR:~-1%"=="\" set "SOURCE_DIR=%SOURCE_DIR:~0,-1%"
 
+if exist "%GIT_XET_PATH%\git-xet.exe" set "PATH=%GIT_XET_PATH%;%PATH%"
+
 echo [1/6] Checking required tools...
 where git >nul 2>nul || (
     echo ERROR: git not found in PATH.
@@ -30,6 +33,20 @@ where git >nul 2>nul || (
 )
 where robocopy >nul 2>nul || (
     echo ERROR: robocopy not found in PATH.
+    exit /b 1
+)
+git xet --version >nul 2>nul || (
+    echo ERROR: git-xet is not installed.
+    echo.
+    echo Hugging Face rejected the Excel files because binary files must be pushed through Xet storage.
+    echo Install it on Windows with one of these options:
+    echo   winget install git-xet
+    echo   or install the MSI from the git-xet Windows release page
+    echo.
+    echo Then run:
+    echo   "C:\Program Files\Git-Xet\git-xet.exe" install
+    echo.
+    echo After that, rerun this script.
     exit /b 1
 )
 
