@@ -1,4 +1,58 @@
-# UBYT + APC Destek MCP Server
+---
+title: DergiSec
+emoji: 📚
+colorFrom: amber
+colorTo: red
+sdk: docker
+app_port: 7860
+---
+
+## UBYT + APC Destek MCP Server
+
+Bu repo artik iki kullanim yolu sunar:
+
+- `server.py`: MCP destekli istemciler icin stdio tabanli server
+- `app.py`: Hugging Face Spaces veya tarayici tabanli kullanim icin tek sayfalik web uygulamasi
+
+Akademisyen son kullanicilar icin onerilen giris noktasi web uygulamasidir. Tek bir serbest metin alaniyla sorgu alir, sonucu dergi kapagi hissi veren kartlar olarak gosterir.
+
+## Hugging Face Spaces Docker Kurulumu
+
+Bu repo Hugging Face Docker Space olarak calisacak sekilde hazirlandi. Space olustururken Docker SDK secilebilir; repo kokundeki `Dockerfile` ve bu README ust bilgisindeki `sdk: docker` ayari otomatik kullanilir.
+
+Space acildiginda uygulama `7860` portundan su bilecenleri servis eder:
+
+- `GET /`: tek sayfalik arayuz
+- `POST /recommend`: serbest metin sorgusundan dergi kartlari ureten API
+- `GET /health`: saglik kontrolu
+
+## Web Uygulamasini Lokal Calistirma
+
+Bagimliliklari kur:
+
+```powershell
+pip install -r requirements.txt
+```
+
+Ardindan web uygulamasini baslat:
+
+```powershell
+uvicorn app:app --host 0.0.0.0 --port 7860
+```
+
+Tarayicida ac:
+
+```text
+http://127.0.0.1:7860
+```
+
+Ornek API cagrisi:
+
+```powershell
+curl -X POST http://127.0.0.1:7860/recommend ^
+  -H "Content-Type: application/json" ^
+  -d "{\"query\":\"Beyin MR goruntulerinden kanama tespiti yapan bir goruntu isleme algoritmasi gelistirdim.\",\"require_apc\":false,\"indexes\":[\"SCIE\"],\"limit\":3}"
+```
 
 Bu proje, UBYT yayin tesvik listesini ve Elsevier/Wiley APC destek listelerini yerel bir MCP server olarak Codex, GitHub Copilot gibi MCP destekleyen yapay zeka istemcilerine acar.
 

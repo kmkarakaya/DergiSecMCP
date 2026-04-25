@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="tr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>DergiSec</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">UBYT + APC Journal Navigator</p>
+          <h1>Makaleniz için dergi kapakları gibi akan öneriler</h1>
+          <p class="hero-text">
+            Konunuzu veya özetinizi yazın. Sonuçlar her sorguda yeni bir editoryal duvar olarak aksın.
+          </p>
+        </div>
+        <form id="query-form" class="query-panel">
+          <label class="field-label" for="query-input">Yayın konusu / özet</label>
+          <textarea
+            id="query-input"
+            name="query"
+            rows="6"
+            placeholder="Örnek: Beyin MR görüntülerinden kanama tespiti yapan bir görüntü işleme algoritması geliştirdim."
+            required
+          ></textarea>
+          <div class="controls">
+            <label class="toggle">
+              <input id="require-apc" type="checkbox" />
+              <span>Sadece APC destekli olanları öne çıkar</span>
+            </label>
+            <label class="select-wrap">
+              <span>Maksimum destek miktarı</span>
+              <select id="max-payment">
+                <option value="">Fark etmez</option>
+              </select>
+            </label>
+            <label class="select-wrap">
+              <span>İndeks</span>
+              <select id="index-filter">
+                <option value="SCIE">SCIE</option>
+                <option value="SCI">SCI</option>
+                <option value="AHCI">AHCI</option>
+                <option value="">Fark etmez</option>
+              </select>
+            </label>
+            <label class="select-wrap">
+              <span>Sonuç sayısı</span>
+              <select id="result-limit">
+                <option value="3">3</option>
+                <option value="5">5</option>
+                <option value="8">8</option>
+              </select>
+            </label>
+          </div>
+          <button class="submit-button" type="submit">Uygun dergileri bul</button>
+          <section id="status-panel" class="status-panel" aria-live="polite" aria-hidden="true">
+            <div class="status-head">
+              <div class="status-orb"></div>
+              <div>
+                <p id="status-title" class="status-title">Sorgu işleniyor</p>
+                <p id="status-copy" class="status-copy">Anahtar kelimeler çıkarılıyor ve lokal adaylar taranıyor.</p>
+              </div>
+            </div>
+            <div id="status-steps" class="status-steps"></div>
+          </section>
+        </form>
+      </header>
+
+      <main>
+        <section id="stream" class="response-stream"></section>
+      </main>
+    </div>
+
+    <aside id="drawer" class="drawer" aria-hidden="true">
+      <div class="drawer-backdrop" data-close-drawer></div>
+      <div class="drawer-panel">
+        <button class="drawer-close" type="button" data-close-drawer>Kapat</button>
+        <div id="drawer-content"></div>
+      </div>
+    </aside>
+
+    <template id="response-template">
+      <section class="response-block">
+        <div class="query-ribbon"></div>
+        <div class="response-meta">
+          <p class="response-label">Sorgu</p>
+          <p class="response-query"></p>
+          <p class="response-summary"></p>
+          <p class="response-term-line response-required"></p>
+          <p class="response-term-line response-optional"></p>
+        </div>
+        <div class="card-wall"></div>
+      </section>
+    </template>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

@@ -215,9 +215,18 @@ def _scope_review_candidate(match: dict[str, Any], rank: int) -> dict[str, Any]:
         "title_aliases": title_aliases,
         "issn": match.get("issn"),
         "eissn": match.get("eissn"),
+        "odeme_tl": match.get("odeme_tl"),
+        "dergi_mep_puani": match.get("dergi_mep_puani"),
+        "scie": match.get("scie", False),
+        "ssci": match.get("ssci", False),
+        "ahci": match.get("ahci", False),
+        "kaynak": match.get("kaynak"),
+        "yil": match.get("yil"),
         "ubyt_incentive_eligible": match.get("ubyt_incentive_eligible", True),
         "apc_funding_eligible": match.get("apc_funding_eligible", False),
         "apc_providers": match.get("apc_providers", []),
+        "apc_matches": match.get("apc_matches", []),
+        "apc_evidence": match.get("apc_evidence", {}),
         "known_urls": known_urls,
         "preferred_url": known_urls[0] if known_urls else None,
         "verification_query": " ".join(term for term in verification_terms if term),
@@ -463,6 +472,7 @@ def _score_row(row: pd.Series, query_text: str, query_number: str) -> int:
 
 
 VALID_INDEXES = {"SCIE", "SSCI", "AHCI"}
+INDEX_ALIASES = {"SCI": "SCIE"}
 VALID_SORTS = {"relevance", "mep_desc", "payment_desc", "name_asc"}
 VALID_APC_PROVIDERS = {"elsevier", "wiley"}
 
@@ -494,7 +504,7 @@ def _normalize_indexes(indexes: Any) -> list[str]:
 
     normalized_indexes: list[str] = []
     for index in indexes:
-        normalized = str(index).strip().upper()
+        normalized = INDEX_ALIASES.get(str(index).strip().upper(), str(index).strip().upper())
         if normalized in VALID_INDEXES and normalized not in normalized_indexes:
             normalized_indexes.append(normalized)
     return normalized_indexes
