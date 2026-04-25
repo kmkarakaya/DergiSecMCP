@@ -318,6 +318,17 @@ textarea {
   gap: 22px;
 }
 
+.page-credit {
+  margin-top: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.page-credit p {
+  margin: 0;
+}
+
 .response-block {
   padding: 24px;
 }
