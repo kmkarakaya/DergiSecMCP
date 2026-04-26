@@ -14,8 +14,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from server import JOURNALS
-from server import prepare_scope_review_candidates
+from journal_engine import JOURNALS
+from journal_engine import prepare_scope_review_candidates
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -536,7 +536,7 @@ def card_payload(candidate: dict[str, Any], indexes: list[str], term_source: str
     }
 
 
-app = FastAPI(title="DergiSec", version="0.1.0")
+app = FastAPI(title="Murat Karakaya Akademi Dergi Tarama", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

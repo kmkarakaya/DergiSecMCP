@@ -3,14 +3,14 @@ setlocal EnableExtensions EnableDelayedExpansion
 
 set "SPACE_REPO=https://huggingface.co/spaces/kmkarakaya/dergitarama"
 set "SPACE_DIR=C:\Codes\dergitarama-space"
-set "COMMIT_MESSAGE=Deploy DergiSec to HF Space"
+set "COMMIT_MESSAGE=Deploy Murat Karakaya Akademi Dergi Tarama to HF Space"
 set "SOURCE_DIR=%~dp0"
 set "WORK_DIR="
 set "DRY_RUN=0"
 set "SKIP_DOCKER_CHECK=0"
 set "GIT_XET_PATH=C:\Program Files\Git-Xet"
-set "DOCKER_TAG=derrgisec-hf-preflight"
-set "DOCKER_CONTAINER=derrgisec-hf-preflight-container"
+set "DOCKER_TAG=murat-karakaya-akademi-dergi-tarama-hf-preflight"
+set "DOCKER_CONTAINER=murat-karakaya-akademi-dergi-tarama-hf-preflight-container"
 set "DOCKER_TEST_PORT=8870"
 
 if "%SOURCE_DIR:~-1%"=="\" set "SOURCE_DIR=%SOURCE_DIR:~0,-1%"
@@ -68,7 +68,7 @@ git xet --version >nul 2>nul || (
     exit /b 1
 )
 
-for %%F in ("Dockerfile" "README.md" "requirements.txt" "app.py" "server.py" "ubyt.xlsx" "Elsevier.xlsx" "Wiley.xlsx") do (
+for %%F in ("Dockerfile" "README.md" "requirements.txt" "app.py" "journal_engine.py" "ubyt.xlsx" "Elsevier.xlsx" "Wiley.xlsx") do (
     if not exist "%SOURCE_DIR%\%%~F" (
         echo ERROR: Required file missing: %SOURCE_DIR%\%%~F
         exit /b 1
@@ -162,7 +162,7 @@ if exist "%SPACE_DIR%\.git" (
 
 echo.
 echo [4/7] Syncing files to Space working tree...
-robocopy "%SOURCE_DIR%" "%WORK_DIR%" /MIR /XD .git .venv __pycache__ .pytest_cache .mypy_cache .vscode node_modules .playwright-mcp /XF "~$*.xlsx"
+robocopy "%SOURCE_DIR%" "%WORK_DIR%" /MIR /XD .git .venv __pycache__ .pytest_cache .mypy_cache .vscode node_modules /XF "~$*.xlsx"
 set "ROBOCOPY_EXIT=%ERRORLEVEL%"
 if %ROBOCOPY_EXIT% GEQ 8 (
     echo ERROR: robocopy failed with exit code %ROBOCOPY_EXIT%.

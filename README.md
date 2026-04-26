@@ -1,21 +1,21 @@
 ---
-title: Dergi Tarama
+title: Murat Karakaya Akademi Dergi Tarama
 emoji: 📚
 colorFrom: yellow
 colorTo: red
 sdk: docker
 app_port: 7860
 ---
-## Dergi Tarama
+## Murat Karakaya Akademi Dergi Tarama
 
-Dergi Tarama, UBYT 2026 dergi listesi ile APC destek kayitlarini birlestirerek akademisyenlere uygun dergi onermeye odaklanan tek sayfalik bir web uygulamasidir.
+Murat Karakaya Akademi Dergi Tarama, UBYT 2026 dergi listesi ile APC destek kayitlarini birlestirerek akademisyenlere uygun dergi onermeye odaklanan tek sayfalik bir web uygulamasidir.
 
 Bu repo iki kullanim yolu sunar:
 
 - `app.py`: son kullaniciya acilan FastAPI tabanli web uygulamasi
-- `server.py`: MCP istemcileri icin stdio tabanli yardimci sunucu
+- `journal_engine.py`: web uygulamasinin veri okuma ve aday secme mantigi
 
-Birincil giris noktasi web uygulamasidir.
+Bu repo artik yalnizca web uygulamasi icin tutulmaktadir.
 
 ## Ne Yapar?
 
@@ -167,24 +167,12 @@ Docker kontrolunu atlayarak:
 push_hf_space.bat /skip-docker-check
 ```
 
-## MCP Sunucusu
-
-`server.py` halen repo icinde bulunur ve MCP istemcileri tarafindan kullanilabilir. Ancak bu repo icin ana urun deneyimi artik web uygulamasidir.
-
-MCP sunucusunu Codex'e eklemek icin:
-
-```powershell
-codex mcp add ubyt -- python C:\Codes\UBYT_MCP\server.py
-```
-
-Bu sunucu `stdio` transport kullanir; web portu acmaz.
-
 ## Proje Dosyalari
 
 Temel dosyalar:
 
 - `app.py`: FastAPI uygulamasi
-- `server.py`: MCP server ve deterministik aday secim mantigi
+- `journal_engine.py`: veri okuma ve deterministik aday secim mantigi
 - `static/index.html`: tek sayfa arayuz
 - `static/app.js`: istemci davranisi
 - `static/styles.css`: arayuz stilleri
