@@ -50,8 +50,31 @@ OLLAMA_TERM_SCHEMA = {
     "required": ["required_terms", "optional_terms"],
     "additionalProperties": False,
 }
+OLLAMA_JUDGE_POOL_LIMIT = 15
+OLLAMA_JUDGE_ENABLED = os.environ.get("OLLAMA_JUDGE_ENABLED", "1") != "0"
+OLLAMA_JUDGE_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "ordered_candidate_ids": {
+            "type": "array",
+            "items": {"type": "string"},
+            "maxItems": 20,
+        },
+    },
+    "required": ["ordered_candidate_ids"],
+    "additionalProperties": False,
+}
 OLLAMA_CLOUD_HOST = os.environ.get("OLLAMA_HOST", "https://ollama.com")
 OLLAMA_CLOUD_MODEL = os.environ.get("OLLAMA_MODEL", "gpt-oss:120b")
+BLOCKED_SHORT_SEARCH_TERMS = {
+    "ai",
+    "ml",
+    "dl",
+    "nlp",
+    "llm",
+    "cv",
+    "rl",
+}
 STOPWORDS = {
     "bir",
     "ve",
@@ -251,6 +274,8 @@ def _normalized_term_list(values: Any, limit: int = 7) -> list[str]:
     seen: set[str] = set()
     for item in values:
         cleaned = normalize_text(item)
+        if cleaned in BLOCKED_SHORT_SEARCH_TERMS:
+            continue
         if cleaned and cleaned not in seen:
             seen.add(cleaned)
             terms.append(cleaned)
@@ -259,22 +284,30 @@ def _normalized_term_list(values: Any, limit: int = 7) -> list[str]:
     return terms
 
 
-def parse_ollama_terms(content: str) -> tuple[list[str], list[str]]:
+def _extract_json_object(content: str) -> dict[str, Any] | None:
     if not content:
-        return [], []
+        return None
 
     try:
         payload = json.loads(content)
     except json.JSONDecodeError:
         match = re.search(r"\{[\s\S]*\}", content)
         if not match:
-            return [], []
+            return None
         try:
             payload = json.loads(match.group(0))
         except json.JSONDecodeError:
-            return [], []
+            return None
 
     if not isinstance(payload, dict):
+        return None
+
+    return payload
+
+
+def parse_ollama_terms(content: str) -> tuple[list[str], list[str]]:
+    payload = _extract_json_object(content)
+    if payload is None:
         return [], []
 
     required_terms = _normalized_term_list(payload.get("required_terms"), limit=7)
@@ -311,14 +344,20 @@ def extract_terms_with_ollama(query: str) -> tuple[list[str], list[str], dict[st
 
     system_prompt = (
         "You convert a Turkish or English academic journal query into structured search terms for journal discovery. "
+        "These terms will be used to scan journal titles from Excel lists, so prefer terms and short phrases that are likely to literally appear in journal titles. "
         "Return only a JSON object with exactly two keys: required_terms and optional_terms. "
         "Each value must be an array of lowercase English-only canonical terms or short phrases, with at most 7 items each. "
-        "required_terms must be very strict and minimal: include only indispensable anchor concepts that should be mandatory in title-based search, often 0 to 2 items. "
-        "optional_terms should contain broader supporting concepts, methods, disease names, imaging modalities, and field phrases useful for ranking. "
-        "Do not include Turkish. Do not explain. Prefer compact academic search phrases such as medical imaging, medical image analysis, image processing, neuroradiology, radiology, deep learning, machine learning, hemorrhage, brain, mri, detection."
+        "required_terms must be very strict and minimal: include only indispensable anchor concepts that should be mandatory in journal title matching, often 0 to 2 items. "
+        "optional_terms should contain broader field phrases, methods, disease names, imaging modalities, and adjacent concepts that are still plausible in journal titles and useful for ranking. "
+        "Prefer journal-scope phrases such as software engineering, machine learning, radiology, medical imaging, education technology, information systems, or artificial intelligence. "
+        "Avoid long task descriptions or paper-specific problem statements that are unlikely to appear in journal titles. "
+        "Do not include Turkish. Do not explain. Do not use short abbreviations such as ai, ml, dl, nlp, llm, cv, or rl. "
+        "Prefer explicit academic phrases such as artificial intelligence, machine learning, deep learning, computer vision, natural language processing, medical imaging, medical image analysis, image processing, neuroradiology, radiology, hemorrhage, brain, mri, detection."
     )
     user_prompt = (
-        "Extract required_terms and optional_terms for journal search from this query. Return the JSON object only.\n\n"
+        "Extract required_terms and optional_terms for journal search from this query. "
+        "The terms will be matched against journal titles in Excel-based journal lists, so choose phrases that are likely to appear in journal names. "
+        "Return the JSON object only.\n\n"
         f"Query: {query}"
     )
 
@@ -334,6 +373,7 @@ def extract_terms_with_ollama(query: str) -> tuple[list[str], list[str], dict[st
                 {"role": "user", "content": user_prompt},
             ],
             format=OLLAMA_TERM_SCHEMA,
+            options={"temperature": 0},
         )
     except Exception:
         return [], [], {
@@ -389,6 +429,25 @@ def extract_optional_terms(query: str) -> list[str]:
     return optional_terms
 
 
+def parse_ollama_rerank(content: str) -> list[str]:
+    payload = _extract_json_object(content)
+    if payload is None:
+        return []
+
+    ordered_ids = payload.get("ordered_candidate_ids")
+    if not isinstance(ordered_ids, list):
+        return []
+
+    unique_ids: list[str] = []
+    seen: set[str] = set()
+    for item in ordered_ids:
+        candidate_id = str(item or "").strip()
+        if candidate_id and candidate_id not in seen:
+            seen.add(candidate_id)
+            unique_ids.append(candidate_id)
+    return unique_ids
+
+
 def merge_unique_terms(*term_groups: list[str]) -> list[str]:
     merged: list[str] = []
     seen: set[str] = set()
@@ -435,6 +494,153 @@ def fit_reason(candidate: dict[str, Any]) -> str:
     if not parts:
         parts.append("Matched from local UBYT/APC data based on topic overlap.")
     return " ".join(parts)
+
+
+def judge_candidate_payload(candidate: dict[str, Any], local_rank: int) -> dict[str, Any]:
+    scope_hints = candidate.get("scope_hints", {})
+    local_match_reason = candidate.get("local_match_reason", {})
+    return {
+        "candidate_id": candidate.get("candidate_id"),
+        "local_rank": local_rank,
+        "title": candidate.get("canonical_title"),
+        "matched_terms": candidate_matched_terms(candidate)[:5],
+        "match_score": local_match_reason.get("match_score"),
+        "fit_reason": fit_reason(candidate),
+        "subjects": (scope_hints.get("subjects") or [])[:2],
+        "disciplines": (scope_hints.get("disciplines") or [])[:2],
+        "index_label": journal_index_label(candidate),
+        "apc_supported": bool(candidate.get("apc_funding_eligible", False)),
+    }
+
+
+def rerank_candidates_with_ollama(query: str, candidates: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    if len(candidates) < 2:
+        return candidates, {
+            "enabled": OLLAMA_JUDGE_ENABLED,
+            "attempted": False,
+            "host": OLLAMA_CLOUD_HOST,
+            "model": OLLAMA_CLOUD_MODEL,
+            "status": "skipped_small_pool",
+            "status_text": "Aday havuzu çok küçük olduğu için yerel sıralama korundu.",
+        }
+
+    if not OLLAMA_JUDGE_ENABLED:
+        return candidates, {
+            "enabled": False,
+            "attempted": False,
+            "host": OLLAMA_CLOUD_HOST,
+            "model": OLLAMA_CLOUD_MODEL,
+            "status": "disabled",
+            "status_text": "Ollama judge kapalı; yerel sıralama kullanıldı.",
+        }
+
+    api_key = os.environ.get("OLLAMA_API_KEY")
+    if not api_key:
+        return candidates, {
+            "enabled": False,
+            "attempted": False,
+            "host": OLLAMA_CLOUD_HOST,
+            "model": OLLAMA_CLOUD_MODEL,
+            "status": "disabled",
+            "status_text": "OLLAMA_API_KEY bulunamadı; yerel sıralama kullanıldı.",
+        }
+
+    try:
+        from ollama import Client
+    except ImportError:
+        return candidates, {
+            "enabled": True,
+            "attempted": False,
+            "host": OLLAMA_CLOUD_HOST,
+            "model": OLLAMA_CLOUD_MODEL,
+            "status": "import_error",
+            "status_text": "Ollama judge istemcisi yüklenemedi; yerel sıralama kullanıldı.",
+        }
+
+    candidate_payloads = [judge_candidate_payload(candidate, index) for index, candidate in enumerate(candidates, start=1)]
+    system_prompt = (
+        "You are a journal reranking judge for academic journal recommendation. "
+        "Reorder only the candidate journals provided by the system. "
+        "Return only a JSON object with one key: ordered_candidate_ids. "
+        "Use only the provided candidate_id values. Do not invent journals, do not rename titles, and do not remove candidates. "
+        "Hard filters such as UBYT inclusion, APC, payment, and index are already applied by the system and must not be overridden. "
+        "Rank candidates by topical fit to the user's original query. Prefer topic fit over prestige. "
+        "Use title, matched_terms, fit_reason, subjects, and disciplines as the main evidence. "
+        "If evidence is weak or ambiguous, stay close to the local_rank order. Return JSON only."
+    )
+    user_prompt = (
+        "Re-rank the following journal candidates for the user's original request. Return JSON only.\n\n"
+        f"User query:\n{query}\n\n"
+        f"Candidates:\n{json.dumps(candidate_payloads, ensure_ascii=False)}"
+    )
+
+    try:
+        client = Client(
+            host=OLLAMA_CLOUD_HOST,
+            headers={"Authorization": "Bearer " + api_key},
+        )
+        response = client.chat(
+            OLLAMA_CLOUD_MODEL,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            format=OLLAMA_JUDGE_SCHEMA,
+            options={"temperature": 0},
+        )
+    except Exception:
+        return candidates, {
+            "enabled": True,
+            "attempted": True,
+            "host": OLLAMA_CLOUD_HOST,
+            "model": OLLAMA_CLOUD_MODEL,
+            "status": "request_failed",
+            "status_text": "Ollama judge sıralaması alınamadı; yerel sıralama korundu.",
+        }
+
+    if isinstance(response, dict):
+        content = response.get("message", {}).get("content", "")
+    else:
+        message = getattr(response, "message", None)
+        content = getattr(message, "content", "") if message is not None else ""
+
+    ranked_candidate_ids = parse_ollama_rerank(content)
+    candidate_map = {
+        candidate.get("candidate_id"): candidate
+        for candidate in candidates
+        if candidate.get("candidate_id")
+    }
+    local_candidate_ids = [candidate.get("candidate_id") for candidate in candidates if candidate.get("candidate_id")]
+
+    valid_ranked_ids: list[str] = []
+    seen_ids: set[str] = set()
+    for candidate_id in ranked_candidate_ids:
+        if candidate_id in candidate_map and candidate_id not in seen_ids:
+            seen_ids.add(candidate_id)
+            valid_ranked_ids.append(candidate_id)
+
+    if not valid_ranked_ids:
+        return candidates, {
+            "enabled": True,
+            "attempted": True,
+            "host": OLLAMA_CLOUD_HOST,
+            "model": OLLAMA_CLOUD_MODEL,
+            "status": "invalid_response",
+            "status_text": "Ollama judge geçerli bir sıralama döndüremedi; yerel sıralama korundu.",
+        }
+
+    final_ids = valid_ranked_ids + [candidate_id for candidate_id in local_candidate_ids if candidate_id not in seen_ids]
+    reranked_candidates = [candidate_map[candidate_id] for candidate_id in final_ids if candidate_id in candidate_map]
+    reranked_candidates.extend(candidate for candidate in candidates if not candidate.get("candidate_id"))
+
+    return reranked_candidates, {
+        "enabled": True,
+        "attempted": True,
+        "host": OLLAMA_CLOUD_HOST,
+        "model": OLLAMA_CLOUD_MODEL,
+        "status": "success",
+        "status_text": f"Ollama judge sıralaması uygulandı ({OLLAMA_CLOUD_MODEL}). Yerel shortlist yeniden sıralandı.",
+    }
 
 
 def build_badges(candidate: dict[str, Any]) -> list[str]:
@@ -553,7 +759,7 @@ def build_recommendation_response(
     export_all: bool = False,
 ) -> dict[str, Any]:
     required_terms, optional_terms, term_source, llm_info = extract_search_terms_with_source(payload.query)
-    result_limit = max(len(JOURNALS.index), payload.limit) if export_all else payload.limit
+    result_limit = max(len(JOURNALS.index), payload.limit) if export_all else max(payload.limit, OLLAMA_JUDGE_POOL_LIMIT)
     shortlist = prepare_scope_review_candidates(
         required_terms=required_terms,
         optional_terms=optional_terms,
@@ -584,7 +790,21 @@ def build_recommendation_response(
         )
         ranking_mode = "relaxed-required-to-optional"
 
-    results = [card_payload(candidate, payload.indexes, term_source) for candidate in shortlist.get("candidates", [])]
+    shortlisted_candidates = shortlist.get("candidates", [])
+    judge_info = {
+        "enabled": OLLAMA_JUDGE_ENABLED,
+        "attempted": False,
+        "host": OLLAMA_CLOUD_HOST,
+        "model": OLLAMA_CLOUD_MODEL,
+        "status": "skipped_export",
+        "status_text": "Export akışında yerel sıralama korundu.",
+    }
+    if not export_all:
+        shortlisted_candidates, judge_info = rerank_candidates_with_ollama(payload.query, shortlisted_candidates)
+
+    candidate_pool_count = len(shortlisted_candidates)
+    visible_candidates = shortlisted_candidates if export_all else shortlisted_candidates[:payload.limit]
+    results = [card_payload(candidate, payload.indexes, term_source) for candidate in visible_candidates]
     return {
         "query": payload.query,
         "query_summary": {
@@ -600,7 +820,10 @@ def build_recommendation_response(
             "max_payment_tl": payload.max_payment_tl,
             "indexes": payload.indexes,
             "keyword_source": term_source,
+            "candidate_pool_count": candidate_pool_count,
             "llm": llm_info,
+            "rerank": judge_info,
+            "rerank_source": "ollama-judge" if judge_info.get("status") == "success" else "local-shortlist",
         },
         "results": results,
         "closed_set_only": shortlist.get("closed_set_only", True),

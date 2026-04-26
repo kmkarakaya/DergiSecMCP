@@ -13,34 +13,58 @@ const pageCredits = document.querySelectorAll("[data-version-stamp]");
 
 const STATUS_PHASES = [
   {
-    title: "Ollama Cloud'a erişiliyor",
-    copy: "Türkçe veya karışık sorgu, İngilizce akademik arama terimlerine dönüştürülmek üzere modele gönderiliyor.",
+    title: "Ollama Cloud erişimi kuruluyor",
+    copy: "Sorgu, journal title eşleşmesinde kullanılacak İngilizce arama terimlerini üretmesi için Ollama Cloud'a hazırlanıyor.",
     step: "Ollama erişimi deneniyor",
   },
   {
-    title: "Ollama yanıtı bekleniyor",
-    copy: "Modelden dönen anahtar kelimeler doğrulanıyor; gerekiyorsa yerel fallback hazır tutuluyor.",
+    title: "Ollama terim yanıtı doğrulanıyor",
+    copy: "Structured output kontrol ediliyor; model yanıt veremezse yerel terim fallback'i otomatik devreye alınacak.",
     step: "Ollama geri dönüşü kontrol ediliyor",
   },
   {
-    title: "Konu ve anahtar kelimeler çıkarılıyor",
-    copy: "Arama terimleri netleştiriliyor ve lokal aday havuzu için uygun hale getiriliyor.",
-    step: "Konu ve anahtar kelimeler çıkarılıyor",
+    title: "Title tarama terimleri hazırlanıyor",
+    copy: "Zorunlu ve sıralama terimleri normalize edilerek Excel'deki dergi başlıklarında taramaya uygun hale getiriliyor.",
+    step: "Başlık tarama terimleri hazırlanıyor",
   },
   {
-    title: "UBYT listesi taranıyor",
-    copy: "Lokal veri setinde uygun dergiler eşleştiriliyor ve ilk shortlist çıkartılıyor.",
-    step: "UBYT adayları sıralanıyor",
+    title: "Yerel shortlist oluşturuluyor",
+    copy: "UBYT veri setinde title matching yapılıyor, aday havuzu skorluyor ve ilk sıralama çıkarılıyor.",
+    step: "Yerel aday havuzu skorluyor",
+  },
+  {
+    title: "Ollama judge yeniden sıralaması deneniyor",
+    copy: "Yerel shortlist, gerekirse Ollama judge'e verilerek kullanıcı sorgusuna göre yeniden sıralanıyor; başarısız olursa yerel sıra korunuyor.",
+    step: "Ollama judge sıralaması değerlendiriliyor",
   },
   {
     title: "APC destek kayıtları bağlanıyor",
-    copy: "Elsevier ve Wiley kayıtlarıyla destek bilgileri birleştiriliyor.",
+    copy: "Elsevier ve Wiley kayıtlarıyla APC destek ve yayınevi bilgileri aday dergilere bağlanıyor.",
     step: "APC destek kayıtları bağlanıyor",
   },
   {
-    title: "Kartlar hazırlanıyor",
-    copy: "Dergi kapakları, metrikler ve detay panelleri oluşturuluyor.",
-    step: "Kart görünümü oluşturuluyor",
+    title: "Kartlar ve indirme verisi hazırlanıyor",
+    copy: "Sonuç kartları, detay drawer içeriği ve Excel indirme payload'ı birlikte oluşturuluyor.",
+    step: "Kart ve çıktı verisi hazırlanıyor",
+  },
+];
+
+const STATUS_FINAL_PHASE_ROTATION = [
+  {
+    title: "Kart özetleri hazırlanıyor",
+    copy: "Sonuç kartlarının başlık, metrik ve badge alanları birleştiriliyor.",
+  },
+  {
+    title: "Detay drawer verisi hazırlanıyor",
+    copy: "Açılır detay panelinde gösterilecek APC, UBYT ve eşleşme alanları paketleniyor.",
+  },
+  {
+    title: "Excel indirme verisi hazırlanıyor",
+    copy: "İndir butonunun kullanacağı export payload'ı aynı sonuç kümesi için hazırlanıyor.",
+  },
+  {
+    title: "Son sonuçlar arayüze aktarılıyor",
+    copy: "Backend yanıtı işlenip sonuç bloğu ve kart listesi ekrana yazdırılmak üzere tamamlanıyor.",
   },
 ];
 
@@ -90,6 +114,17 @@ function formatIndexesLabel(indexes) {
 
 function formatRequireApcLabel(requireApc) {
   return requireApc ? "APC: Sadece destekli olanları öne çıkar" : "";
+}
+
+function formatRerankLabel(rerankInfo) {
+  const status = rerankInfo?.status || "local";
+  if (status === "success") {
+    return "Yeniden sıralama: Ollama Judge";
+  }
+  if (["request_failed", "invalid_response", "import_error"].includes(status)) {
+    return "Yeniden sıralama: Lokal fallback";
+  }
+  return "Yeniden sıralama: Lokal";
 }
 
 const exportPayloads = new Map();
@@ -259,31 +294,97 @@ function startStatusFlow() {
 
     statusDotFrame = (statusDotFrame + 1) % 4;
     const dots = ".".repeat(statusDotFrame || 1);
-    statusTitle.textContent = `Kartlar hazırlanıyor${dots}`;
+    const rotationIndex = statusDotFrame % STATUS_FINAL_PHASE_ROTATION.length;
+    const activeWaitingPhase = STATUS_FINAL_PHASE_ROTATION[rotationIndex];
+    statusTitle.textContent = `${activeWaitingPhase.title}${dots}`;
+    statusCopy.textContent = activeWaitingPhase.copy;
   }, 1500);
+}
+
+function llmAccessStep(llm) {
+  if (llm.attempted || llm.enabled) {
+    return `Ollama erişimi: ${llm.host || "https://ollama.com"}`;
+  }
+
+  return "Ollama erişimi atlandı; yerel terim fallback'i hazır";
+}
+
+function llmResponseStep(payload) {
+  const llm = payload?.query_summary?.llm || {};
+  const model = llm.model || "gpt-oss:120b";
+  const source = payload?.query_summary?.keyword_source;
+
+  if (source === "ollama-cloud") {
+    return `Ollama terim yanıtı alındı: ${model}`;
+  }
+
+  if (llm.attempted || llm.enabled) {
+    return "Ollama terim yanıtı kullanılamadı; yerel fallback devrede";
+  }
+
+  return "Ollama terim yanıtı istenmedi";
+}
+
+function termSummaryStep(payload) {
+  const requiredCount = payload?.query_summary?.required_terms?.length || 0;
+  const optionalCount = payload?.query_summary?.applied_optional_terms?.length || 0;
+  return `Başlık tarama terimleri hazır: ${requiredCount} zorunlu, ${optionalCount} sıralama terimi`;
+}
+
+function shortlistSummaryStep(payload) {
+  const poolCount = payload?.query_summary?.candidate_pool_count ?? payload?.results?.length ?? 0;
+  const rankingMode = rankingModeLabel(payload?.query_summary?.ranking_mode || "strict-required");
+  return `Yerel shortlist hazır: ${poolCount} aday, mod ${rankingMode.toLowerCase()}`;
+}
+
+function rerankSummaryStep(payload) {
+  const rerank = payload?.query_summary?.rerank || {};
+  const candidatePoolCount = payload?.query_summary?.candidate_pool_count ?? payload?.results?.length ?? 0;
+
+  if (rerank.status === "success") {
+    return `Ollama judge uygulandı: ${candidatePoolCount} aday yeniden sıralandı`;
+  }
+
+  if (rerank.status === "skipped_small_pool") {
+    return "Ollama judge atlandı: aday havuzu küçük, yerel sıra korundu";
+  }
+
+  if (["request_failed", "invalid_response", "import_error", "disabled"].includes(rerank.status)) {
+    return "Ollama judge kullanılamadı; yerel sıra korundu";
+  }
+
+  return "Yeniden sıralama yapılmadı; yerel sıra kullanıldı";
+}
+
+function apcSummaryStep(payload) {
+  return payload?.query_summary?.require_apc
+    ? "APC kayıtları bağlandı; yalnızca APC odaklı filtre aktif"
+    : "APC kayıtları bağlandı; APC bilgileri aday kartlara işlendi";
+}
+
+function renderSummaryStep(payload) {
+  const resultCount = payload?.query_summary?.result_count ?? payload?.results?.length ?? 0;
+  return `${resultCount} sonuç için kartlar, detay paneli ve Excel çıktısı hazırlandı`;
+}
+
+function buildStatusCopy(payload) {
+  const llmText = payload?.query_summary?.llm?.status_text;
+  const rerankText = payload?.query_summary?.rerank?.status_text;
+  return [llmText, rerankText].filter(Boolean).join(" ")
+    || "Arama tamamlandı; aday havuzu, yeniden sıralama ve kart oluşturma adımları tamamlandı.";
 }
 
 function resolvedStatusSteps(payload) {
   const llm = payload?.query_summary?.llm || {};
-  const host = llm.host || "https://ollama.com";
-  const model = llm.model || "gpt-oss:120b";
-  const isCloud = payload?.query_summary?.keyword_source === "ollama-cloud";
-
-  const accessStep = llm.attempted || llm.enabled
-    ? `Ollama erişimi: ${host}`
-    : "Ollama erişimi atlandı";
-
-  const responseStep = isCloud
-    ? `Ollama geri dönüşü alındı: ${model}`
-    : "Ollama geri dönüşü kullanılamadı; yerel fallback devrede";
 
   return [
-    accessStep,
-    responseStep,
-    "Konu ve anahtar kelimeler çıkarılıyor",
-    "UBYT adayları sıralanıyor",
-    "APC destek kayıtları bağlanıyor",
-    "Kart görünümü oluşturuluyor",
+    llmAccessStep(llm),
+    llmResponseStep(payload),
+    termSummaryStep(payload),
+    shortlistSummaryStep(payload),
+    rerankSummaryStep(payload),
+    apcSummaryStep(payload),
+    renderSummaryStep(payload),
   ];
 }
 
@@ -293,9 +394,8 @@ function finishStatusFlow(state = "done", payload = null) {
   statusPanel.classList.add(state);
 
   if (state === "done") {
-    const llm = payload?.query_summary?.llm || {};
     statusTitle.textContent = "Sonuçlar hazır";
-    statusCopy.textContent = llm.status_text || "Dergi kartları aşağıda oluşturuldu. İsterseniz aynı metni yeni opsiyonlarla tekrar deneyebilirsiniz.";
+    statusCopy.textContent = buildStatusCopy(payload);
     statusSteps.innerHTML = resolvedStatusSteps(payload)
       .map((step) => statusStepMarkup(step, "completed"))
       .join("");
@@ -482,6 +582,7 @@ function appendResponseBlock(query, payload) {
   const requireApc = Boolean(payload.query_summary?.require_apc);
   node.querySelector(".response-result-count").textContent = `${resultCount} sonuç`;
   node.querySelector(".response-ranking-mode").textContent = `Sıralama modu: ${rankingModeLabel(rankingMode)}`;
+  node.querySelector(".response-rerank").textContent = formatRerankLabel(payload.query_summary?.rerank);
   node.querySelector(".response-max-payment").textContent = formatPaymentLimitLabel(payload.query_summary?.max_payment_tl);
   node.querySelector(".response-indexes").textContent = formatIndexesLabel(selectedIndexes);
   const requireApcNode = node.querySelector(".response-require-apc");
