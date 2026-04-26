@@ -1,16 +1,20 @@
 from __future__ import annotations
 
+from io import BytesIO
 import json
 import math
 import os
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import quote_plus
 
+import pandas as pd
 from fastapi import FastAPI
 from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -151,7 +155,7 @@ class RecommendationRequest(BaseModel):
     indexes: list[str] = Field(default_factory=lambda: DEFAULT_INDEXES.copy())
     apc_providers: list[str] = Field(default_factory=lambda: DEFAULT_APC_PROVIDERS.copy())
     max_payment_tl: int | None = Field(default=None, ge=0)
-    limit: int = Field(default=3, ge=1, le=12)
+    limit: int = Field(default=3, ge=1, le=15)
 
 
 def build_max_payment_options() -> list[dict[str, Any]]:
@@ -406,8 +410,16 @@ def orientation_for_title(title: str) -> str:
     return "hybrid"
 
 
+def candidate_matched_terms(candidate: dict[str, Any]) -> list[str]:
+    match_reason = candidate.get("local_match_reason", {})
+    return merge_unique_terms(
+        match_reason.get("matched_required_terms", []),
+        match_reason.get("matched_optional_terms", []),
+    )
+
+
 def fit_reason(candidate: dict[str, Any]) -> str:
-    matched = candidate.get("local_match_reason", {}).get("matched_optional_terms", [])
+    matched = candidate_matched_terms(candidate)
     hints = candidate.get("scope_hints", {})
     subjects = hints.get("subjects") or []
     disciplines = hints.get("disciplines") or []
@@ -518,7 +530,7 @@ def card_payload(candidate: dict[str, Any], indexes: list[str], term_source: str
         "apc_evidence": candidate.get("apc_evidence", {}),
         "apc_details": [apc_detail_payload(match) for match in candidate.get("apc_matches", [])],
         "scope_hints": candidate.get("scope_hints", {}),
-        "matched_terms": candidate.get("local_match_reason", {}).get("matched_optional_terms", []),
+        "matched_terms": candidate_matched_terms(candidate),
         "ubyt_details": {
             "support_amount": format_payment(candidate.get("odeme_tl")),
             "mep_score": format_mep_score(candidate.get("dergi_mep_puani")),
@@ -534,6 +546,162 @@ def card_payload(candidate: dict[str, Any], indexes: list[str], term_source: str
             "model_source": term_source,
         },
     }
+
+
+def build_recommendation_response(
+    payload: RecommendationRequest,
+    export_all: bool = False,
+) -> dict[str, Any]:
+    required_terms, optional_terms, term_source, llm_info = extract_search_terms_with_source(payload.query)
+    result_limit = max(len(JOURNALS.index), payload.limit) if export_all else payload.limit
+    shortlist = prepare_scope_review_candidates(
+        required_terms=required_terms,
+        optional_terms=optional_terms,
+        indexes=payload.indexes,
+        require_apc=payload.require_apc,
+        apc_providers=payload.apc_providers,
+        max_payment_tl=payload.max_payment_tl,
+        sort_by="relevance",
+        limit=result_limit,
+    )
+
+    applied_required_terms = required_terms.copy()
+    applied_optional_terms = optional_terms.copy()
+    ranking_mode = "strict-required"
+
+    if not shortlist.get("candidates") and required_terms:
+        applied_required_terms = []
+        applied_optional_terms = merge_unique_terms(required_terms, optional_terms)
+        shortlist = prepare_scope_review_candidates(
+            required_terms=[],
+            optional_terms=applied_optional_terms,
+            indexes=payload.indexes,
+            require_apc=payload.require_apc,
+            apc_providers=payload.apc_providers,
+            max_payment_tl=payload.max_payment_tl,
+            sort_by="relevance",
+            limit=result_limit,
+        )
+        ranking_mode = "relaxed-required-to-optional"
+
+    results = [card_payload(candidate, payload.indexes, term_source) for candidate in shortlist.get("candidates", [])]
+    return {
+        "query": payload.query,
+        "query_summary": {
+            "required_terms": required_terms,
+            "optional_terms": optional_terms,
+            "keywords": (required_terms + optional_terms)[:14],
+            "applied_required_terms": applied_required_terms,
+            "applied_optional_terms": applied_optional_terms,
+            "ranking_mode": ranking_mode,
+            "result_count": len(results),
+            "require_apc": payload.require_apc,
+            "apc_providers": payload.apc_providers,
+            "max_payment_tl": payload.max_payment_tl,
+            "indexes": payload.indexes,
+            "keyword_source": term_source,
+            "llm": llm_info,
+        },
+        "results": results,
+        "closed_set_only": shortlist.get("closed_set_only", True),
+    }
+
+
+def build_export_filename(query: str) -> str:
+    slug = re.sub(r"[^a-z0-9]+", "-", normalize_text(query)).strip("-")[:60]
+    if not slug:
+        slug = "dergi-sonuclari"
+    return f"{slug}-dergi-sonuclari.xlsx"
+
+
+def build_export_journal_url(result: dict[str, Any]) -> str:
+    preferred_url = result.get("preferred_url")
+    if preferred_url:
+        return preferred_url
+
+    query_parts = [result.get("title"), result.get("issn"), result.get("eissn"), "journal"]
+    cleaned_parts = [str(value).strip() for value in query_parts if value and str(value).strip() != "-"]
+    if not cleaned_parts:
+        return "-"
+
+    return f"https://www.google.com/search?q={quote_plus(' '.join(cleaned_parts))}"
+
+
+def build_export_summary_rows(response_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    summary = response_payload.get("query_summary", {})
+    return [
+        {
+            "Sorgu": response_payload.get("query") or "-",
+            "Sonuc Sayisi": summary.get("result_count", 0),
+            "Siralama Modu": summary.get("ranking_mode", "strict-required"),
+            "Anahtar Kelime Kaynagi": summary.get("keyword_source", "cloud/local"),
+            "Modelin Cikardigi Zorunlu Terimler": ", ".join(summary.get("required_terms", [])) or "yok",
+            "Uygulanan Zorunlu Filtre": ", ".join(summary.get("applied_required_terms", [])) or "yok",
+            "Siralama Terimleri": ", ".join(summary.get("applied_optional_terms", [])) or "yok",
+            "APC Filtresi": "Acik" if summary.get("require_apc") else "Kapali",
+            "APC Yayinevleri": ", ".join(summary.get("apc_providers", [])) or "-",
+            "Maksimum Destek": format_payment(summary.get("max_payment_tl")),
+            "Indeks": ", ".join(summary.get("indexes", [])) or "Tumu",
+        }
+    ]
+
+
+def build_export_result_rows(query: str, response_payload: dict[str, Any]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    results = response_payload.get("results", [])
+
+    for order, result in enumerate(results, start=1):
+        apc_details = result.get("apc_details") or []
+        providers = [badge for badge in result.get("badges", []) if badge != "UBYT"]
+        apc_urls = [detail.get("url") for detail in apc_details if detail.get("url") and detail.get("url") != "-"]
+        apc_files = [detail.get("raw_source_file") for detail in apc_details if detail.get("raw_source_file") and detail.get("raw_source_file") != "-"]
+        apc_imprints = [detail.get("publisher_or_imprint") for detail in apc_details if detail.get("publisher_or_imprint") and detail.get("publisher_or_imprint") != "-"]
+        scope_hints = result.get("scope_hints") or {}
+        hint_terms = merge_unique_terms(scope_hints.get("subjects", []) or [], scope_hints.get("disciplines", []) or [])
+
+        rows.append(
+            {
+                "Sorgu": query,
+                "Sira": order,
+                "Dergi Basligi": result.get("title") or "-",
+                "Uygunluk Ozeti": result.get("fit_reason") or "-",
+                "Rozetler": ", ".join(result.get("badges", [])) or "-",
+                "APC Destegi": "Var" if result.get("apc_supported") else "Yok",
+                "APC Saglayicilari": ", ".join(providers) or "-",
+                "ISSN": result.get("issn") or "-",
+                "eISSN": result.get("eissn") or "-",
+                "Tesvik Tutari": result.get("support_amount") or "-",
+                "MEP Puani": result.get("mep_score") or "-",
+                "Indeks": result.get("index_label") or "-",
+                "Program": result.get("source_program") or "-",
+                "Yil": result.get("source_year") or "-",
+                "Eslesen Terimler": ", ".join(result.get("matched_terms", [])) or "-",
+                "Konu Ipuclari": ", ".join(hint_terms) or "-",
+                "Dergi Sayfasi": build_export_journal_url(result),
+                "Model Kaynagi": (result.get("provenance") or {}).get("model_source") or "-",
+                "Kaynaklar": ", ".join((result.get("provenance") or {}).get("sources", [])) or "-",
+                "APC Kaynak Dosyalari": ", ".join(sorted(dict.fromkeys(apc_files))) or "-",
+                "APC Imprint": ", ".join(sorted(dict.fromkeys(apc_imprints))) or "-",
+                "APC Kayit Sayisi": len(apc_details),
+                "APC URLleri": ", ".join(sorted(dict.fromkeys(apc_urls))) or "-",
+            }
+        )
+
+    return rows
+
+
+def export_results_workbook(response_payload: dict[str, Any]) -> BytesIO:
+    summary_df = pd.DataFrame(build_export_summary_rows(response_payload))
+    result_rows = build_export_result_rows(response_payload.get("query") or "-", response_payload)
+    results_df = pd.DataFrame(result_rows)
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        summary_df.to_excel(writer, sheet_name="Ozet", index=False)
+        results_df.to_excel(writer, sheet_name="Dergi Sonuclari", index=False)
+
+    output.seek(0)
+    return output
 
 
 app = FastAPI(title="Murat Karakaya Akademi Dergi Tarama", version="0.1.0")
@@ -587,54 +755,27 @@ def index() -> FileResponse:
 
 @app.post("/recommend")
 def recommend(payload: RecommendationRequest) -> dict[str, Any]:
-    required_terms, optional_terms, term_source, llm_info = extract_search_terms_with_source(payload.query)
-    shortlist = prepare_scope_review_candidates(
-        required_terms=required_terms,
-        optional_terms=optional_terms,
-        indexes=payload.indexes,
-        require_apc=payload.require_apc,
-        apc_providers=payload.apc_providers,
-        max_payment_tl=payload.max_payment_tl,
-        sort_by="relevance",
-        limit=payload.limit,
+    return build_recommendation_response(payload)
+
+
+@app.post("/export-results")
+def export_results(payload: dict[str, Any]) -> StreamingResponse:
+    has_current_results = isinstance(payload.get("results"), list) and isinstance(payload.get("query_summary"), dict)
+    if has_current_results:
+        response_payload = {
+            "query": payload.get("query") or "-",
+            "query_summary": payload.get("query_summary") or {},
+            "results": payload.get("results") or [],
+        }
+    else:
+        recommendation_payload = RecommendationRequest.model_validate(payload)
+        response_payload = build_recommendation_response(recommendation_payload, export_all=True)
+
+    workbook = export_results_workbook(response_payload)
+    filename = build_export_filename(response_payload.get("query") or "dergi-sonuclari")
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(
+        workbook,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
     )
-
-    applied_required_terms = required_terms.copy()
-    applied_optional_terms = optional_terms.copy()
-    ranking_mode = "strict-required"
-
-    if not shortlist.get("candidates") and required_terms:
-        applied_required_terms = []
-        applied_optional_terms = merge_unique_terms(required_terms, optional_terms)
-        shortlist = prepare_scope_review_candidates(
-            required_terms=[],
-            optional_terms=applied_optional_terms,
-            indexes=payload.indexes,
-            require_apc=payload.require_apc,
-            apc_providers=payload.apc_providers,
-            max_payment_tl=payload.max_payment_tl,
-            sort_by="relevance",
-            limit=payload.limit,
-        )
-        ranking_mode = "relaxed-required-to-optional"
-
-    results = [card_payload(candidate, payload.indexes, term_source) for candidate in shortlist.get("candidates", [])]
-    return {
-        "query": payload.query,
-        "query_summary": {
-            "required_terms": required_terms,
-            "optional_terms": optional_terms,
-            "keywords": (required_terms + optional_terms)[:14],
-            "applied_required_terms": applied_required_terms,
-            "applied_optional_terms": applied_optional_terms,
-            "ranking_mode": ranking_mode,
-            "result_count": len(results),
-            "require_apc": payload.require_apc,
-            "max_payment_tl": payload.max_payment_tl,
-            "indexes": payload.indexes,
-            "keyword_source": term_source,
-            "llm": llm_info,
-        },
-        "results": results,
-        "closed_set_only": shortlist.get("closed_set_only", True),
-    }

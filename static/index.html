@@ -10,11 +10,18 @@
     <div class="page-shell">
       <header class="hero">
         <div class="hero-copy">
-          <p class="eyebrow">UBYT + APC Dergileri Tarayın</p>
           <h1>UBYT ve APC destekli dergileri bulun.</h1>
-          <p class="hero-text">
-            Makaleniz için UBYT dergi listesinde olan ve Yayın Ücretleri (APC) karşılanabilecek dergileri bulun. Konunuzu veya özetinizi yazın. Sonuçlar her sorguda yeni bir editoryal duvar olarak aksın.
-          </p>
+          <p class="hero-credit" data-version-stamp>Murat Karakaya Akademi 2026</p>
+          <div class="hero-guide">
+            <p class="hero-text">Hızlı kullanım kılavuzu</p>
+            <ul class="hero-guide-list">
+              <li>Makalenizin konusunu, anahtar kelimelerini, özetini veya hakkında bilgi almak istediğiniz derginin adını yazın.</li>
+              <li>Arama seçeneklerini belirleyin: APC filtresi, maksimum destek miktarı, indeks ve dergi sayısı.</li>
+              <li>Gelen kartlarda hangi derginin UBYT listesinde yer aldığını ve hangilerinin Elsevier veya Wiley anlaşmaları kapsamında APC desteği alabildiğini görün.</li>
+              <li>Dergi kartlarının üzerine tıklayarak ayrıntıları açın ve dergi sayfasına gidin ya da dergiyi arayın.</li>
+              <li>Sorgunuzu düzelterek yeniden arama yapın ve sonuçları farklı filtrelerle karşılaştırın.</li>
+            </ul>
+          </div>
           <section class="reference-panel" aria-label="Resmî kaynaklar">
             <p class="reference-title">Resmî kaynaklar</p>
             <ul class="reference-list">
@@ -37,19 +44,15 @@
           </section>
         </div>
         <form id="query-form" class="query-panel">
-          <label class="field-label" for="query-input">Yayın konusu / özet</label>
+          <label class="field-label" for="query-input">Yayın konusu / özet / dergi adı</label>
           <textarea
             id="query-input"
             name="query"
             rows="6"
-            placeholder="Örnek: Beyin MR görüntülerinden kanama tespiti yapan bir görüntü işleme algoritması geliştirdim."
+            placeholder="Örnek 1: Beyin MR görüntülerinden kanama tespiti yapan bir görüntü işleme algoritması geliştirdim.&#10;Örnek 2: Beyin MR görüntü işleme derin öğrenme&#10;Örnek 3: JOURNAL OF MACHINE LEARNING RESEARCH"
             required
           ></textarea>
           <div class="controls">
-            <label class="toggle">
-              <input id="require-apc" type="checkbox" />
-              <span>Sadece APC destekli olanları öne çıkar</span>
-            </label>
             <label class="select-wrap">
               <span>Maksimum destek miktarı</span>
               <select id="max-payment">
@@ -71,7 +74,13 @@
                 <option value="3">3</option>
                 <option value="5">5</option>
                 <option value="8">8</option>
+                <option value="10">10</option>
+                <option value="15">15</option>
               </select>
+            </label>
+            <label class="toggle toggle-row">
+              <input id="require-apc" type="checkbox" />
+              <span>Sadece APC destekli olanları öne çıkar</span>
             </label>
           </div>
           <button class="submit-button" type="submit">Uygun dergileri bul</button>
@@ -93,7 +102,7 @@
       </main>
 
       <footer class="page-credit">
-        <p id="page-credit">Murat Karakaya Akademi 2026</p>
+        <p id="page-credit" data-version-stamp>Murat Karakaya Akademi 2026</p>
       </footer>
     </div>
 
@@ -109,11 +118,35 @@
       <section class="response-block">
         <div class="query-ribbon"></div>
         <div class="response-meta">
-          <p class="response-label">Sorgu</p>
-          <p class="response-query"></p>
-          <p class="response-summary"></p>
-          <p class="response-term-line response-required"></p>
-          <p class="response-term-line response-optional"></p>
+          <div class="response-heading">
+            <p class="response-label">Sorgu</p>
+            <p class="response-query"></p>
+          </div>
+          <div class="response-summary-row">
+            <p class="response-stat response-result-count"></p>
+            <p class="response-stat response-ranking-mode"></p>
+            <p class="response-stat response-max-payment"></p>
+            <p class="response-stat response-indexes"></p>
+            <p class="response-stat response-require-apc"></p>
+            <p class="response-stat response-source"></p>
+          </div>
+          <div class="response-term-list">
+            <div class="response-term-line">
+              <span class="response-term-label">Modelin çıkardığı zorunlu terimler:</span>
+              <span class="response-term-body response-required"></span>
+            </div>
+            <div class="response-term-line">
+              <span class="response-term-label">Uygulanan zorunlu filtre:</span>
+              <span class="response-term-body response-applied-required"></span>
+            </div>
+            <div class="response-term-line">
+              <span class="response-term-label">Sıralama terimleri:</span>
+              <span class="response-term-body response-optional"></span>
+            </div>
+          </div>
+          <div class="response-actions">
+            <button class="response-download-button" type="button" data-download-results>İndir</button>
+          </div>
         </div>
         <div class="card-wall"></div>
       </section>

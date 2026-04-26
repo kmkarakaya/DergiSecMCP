@@ -10,12 +10,12 @@ app_port: 7860
 
 Murat Karakaya Akademi Dergi Tarama, UBYT 2026 dergi listesi ile APC destek kayitlarini birlestirerek akademisyenlere uygun dergi onermeye odaklanan tek sayfalik bir web uygulamasidir.
 
+![Murat Karakaya Akademi Dergi Tarama workflow](workflow1.0.png)
+
 Bu repo iki kullanim yolu sunar:
 
 - `app.py`: son kullaniciya acilan FastAPI tabanli web uygulamasi
 - `journal_engine.py`: web uygulamasinin veri okuma ve aday secme mantigi
-
-Bu repo artik yalnizca web uygulamasi icin tutulmaktadir.
 
 ## Ne Yapar?
 

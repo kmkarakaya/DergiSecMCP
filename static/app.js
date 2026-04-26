@@ -9,7 +9,7 @@ const statusCopy = document.getElementById("status-copy");
 const statusSteps = document.getElementById("status-steps");
 const maxPaymentSelect = document.getElementById("max-payment");
 const indexFilterSelect = document.getElementById("index-filter");
-const pageCredit = document.getElementById("page-credit");
+const pageCredits = document.querySelectorAll("[data-version-stamp]");
 
 const STATUS_PHASES = [
   {
@@ -60,8 +60,110 @@ function buildVersionStamp(date = new Date()) {
 }
 
 function renderPageCredit() {
-  if (!pageCredit) return;
-  pageCredit.textContent = `Murat Karakaya Akademi 2026 • Versiyon ${buildVersionStamp()}`;
+  if (!pageCredits.length) return;
+  const creditText = `Murat Karakaya Akademi 2026 • Versiyon ${buildVersionStamp()}`;
+  pageCredits.forEach((node) => {
+    node.textContent = creditText;
+  });
+}
+
+function formatPaymentLimitLabel(value) {
+  if (value === null || value === undefined || value === "") {
+    return "Maksimum destek miktarı: Tümü";
+  }
+
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) {
+    return `Maksimum destek miktarı: ${value}`;
+  }
+
+  return `Maksimum destek miktarı: ${amount.toLocaleString("tr-TR")} TL ve altı`;
+}
+
+function formatIndexesLabel(indexes) {
+  if (!indexes.length) {
+    return "İndeks: Tümü";
+  }
+
+  return `İndeks: ${indexes.join(", ")}`;
+}
+
+function formatRequireApcLabel(requireApc) {
+  return requireApc ? "APC: Sadece destekli olanları öne çıkar" : "";
+}
+
+const exportPayloads = new Map();
+
+function buildExportRequest(query, payload) {
+  return {
+    query,
+    query_summary: payload.query_summary || {},
+    results: payload.results || [],
+  };
+}
+
+function downloadFilenameFromResponse(response, fallback = "dergi-sonuclari.xlsx") {
+  const header = response.headers.get("Content-Disposition") || "";
+  const match = header.match(/filename="?([^";]+)"?/i);
+  return match?.[1] || fallback;
+}
+
+async function downloadResultsExcel(exportRequest, trigger) {
+  const originalLabel = trigger.textContent;
+  trigger.disabled = true;
+  trigger.textContent = "İndiriliyor...";
+
+  try {
+    const response = await fetch("/export-results", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(exportRequest),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}`);
+    }
+
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const downloadLink = document.createElement("a");
+    downloadLink.href = objectUrl;
+    downloadLink.download = downloadFilenameFromResponse(response);
+    document.body.append(downloadLink);
+    downloadLink.click();
+    downloadLink.remove();
+    URL.revokeObjectURL(objectUrl);
+  } finally {
+    trigger.disabled = false;
+    trigger.textContent = originalLabel;
+  }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function termPillsMarkup(terms) {
+  if (!terms.length) {
+    return '<span class="response-note">yok</span>';
+  }
+
+  return terms
+    .map((term) => `<span class="response-pill">${escapeHtml(term)}</span>`)
+    .join("");
+}
+
+function appliedRequiredMarkup(rankingMode, terms) {
+  if (rankingMode === "relaxed-required-to-optional") {
+    return '<span class="response-note">Bu turda zorunlu filtre uygulanmadı.</span>';
+  }
+
+  return termPillsMarkup(terms);
 }
 
 async function loadFilterOptions() {
@@ -90,8 +192,29 @@ async function loadFilterOptions() {
   }
 }
 
-function badgeMarkup(badge) {
-  return `<span class="badge">${badge}</span>`;
+function badgeKey(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function badgeMarkup(badge, result = null) {
+  const classes = ["badge"];
+  const key = badgeKey(badge);
+
+  if (key === "ubyt") {
+    classes.push("badge-ubyt");
+  } else {
+    classes.push("badge-provider", `badge-provider-${key}`);
+  }
+
+  if (result?.apc_supported) {
+    classes.push("badge-apc-context");
+  }
+
+  return `<span class="${classes.join(" ")}">${badge}</span>`;
 }
 
 function provenanceText(result) {
@@ -232,24 +355,50 @@ function apcDetailMarkup(detail) {
   `;
 }
 
+function buildGoogleJournalSearchUrl(result) {
+  const queryParts = [result.title, result.issn, result.eissn, "journal"]
+    .map((value) => (typeof value === "string" ? value.trim() : value))
+    .filter((value) => value && value !== "-");
+
+  if (!queryParts.length) {
+    return "";
+  }
+
+  return `https://www.google.com/search?q=${encodeURIComponent(queryParts.join(" "))}`;
+}
+
+function rankingModeLabel(mode) {
+  if (mode === "relaxed-required-to-optional") {
+    return "Genişletilmiş eşleşme";
+  }
+  return "Zorunlu terim eşleşmesi";
+}
+
 function cardMarkup(result) {
   const serialized = encodeURIComponent(JSON.stringify(result));
+  const providerClasses = (result.badges || [])
+    .filter((badge) => badge !== "UBYT")
+    .map((badge) => `provider-${badgeKey(badge)}`)
+    .join(" ");
+  const supportClass = result.apc_supported ? "apc-supported" : "ubyt-only";
+  const fallbackSearchUrl = result.preferred_url ? "" : buildGoogleJournalSearchUrl(result);
   const urlButton = result.preferred_url
     ? `<a class="card-link" href="${result.preferred_url}" target="_blank" rel="noreferrer">Dergi sayfasına git</a>`
-    : "";
+    : fallbackSearchUrl
+      ? `<a class="card-link" href="${fallbackSearchUrl}" target="_blank" rel="noreferrer">Dergi sayfasını bul</a>`
+      : "";
 
   return `
-    <article class="journal-card ${result.orientation}" data-result="${serialized}">
+    <article class="journal-card ${result.orientation} ${supportClass} ${providerClasses}" data-result="${serialized}">
       <div class="cover-topline">${result.orientation.toUpperCase()}</div>
       <h3>${result.title}</h3>
       <p class="card-reason">${result.fit_reason}</p>
-      <div class="badge-row">${result.badges.map(badgeMarkup).join("")}</div>
+      <div class="badge-row">${result.badges.map((badge) => badgeMarkup(badge, result)).join("")}</div>
       <div class="metric-grid">
         ${metricMarkup("Tesvik", result.support_amount, "warm")}
         ${metricMarkup("MEP", result.mep_score)}
         ${metricMarkup("Index", result.index_label)}
       </div>
-      <p class="card-meta">${provenanceText(result)}</p>
       ${urlButton}
     </article>
   `;
@@ -257,13 +406,16 @@ function cardMarkup(result) {
 
 function drawerMarkup(result) {
   const matchedTerms = (result.matched_terms || []).join(", ") || "Doğrudan anahtar kelime kanıtı kaydedilmedi.";
-  const scopeSubjects = result.scope_hints?.subjects?.join(", ") || "Konu ipucu bulunmuyor.";
+  const scopeSubjects = result.scope_hints?.subjects?.join(", ") || "APC metadata konu ipucu bulunmuyor.";
   const apcEvidence = result.apc_evidence?.best_match;
   const aliases = (result.title_aliases || []).join(" • ") || "-";
   const apcDetails = (result.apc_details || []).map(apcDetailMarkup).join("");
+  const fallbackSearchUrl = result.preferred_url ? "" : buildGoogleJournalSearchUrl(result);
   const externalLink = result.preferred_url
-    ? `<a class="drawer-link" href="${result.preferred_url}" target="_blank" rel="noreferrer">Resmî dergi sayfasını aç</a>`
-    : "";
+    ? `<a class="drawer-link" href="${result.preferred_url}" target="_blank" rel="noreferrer">Dergi sayfasına git</a>`
+    : fallbackSearchUrl
+      ? `<a class="drawer-link" href="${fallbackSearchUrl}" target="_blank" rel="noreferrer">Dergi sayfasını bul</a>`
+      : "";
 
   return `
     <div class="drawer-header ${result.orientation}">
@@ -271,7 +423,7 @@ function drawerMarkup(result) {
       <h2>${result.title}</h2>
     </div>
     <p class="drawer-text">${result.fit_reason}</p>
-    <div class="drawer-badges">${result.badges.map(badgeMarkup).join("")}</div>
+    <div class="drawer-badges">${result.badges.map((badge) => badgeMarkup(badge, result)).join("")}</div>
     <section class="detail-section">
       <div class="section-head">
         <p class="drawer-eyebrow">UBYT kaydı</p>
@@ -315,15 +467,34 @@ function drawerMarkup(result) {
 
 function appendResponseBlock(query, payload) {
   const node = template.content.firstElementChild.cloneNode(true);
+  const queryNumber = stream.querySelectorAll(".response-block").length + 1;
   const requiredTerms = payload.query_summary?.required_terms || [];
-  const optionalTerms = payload.query_summary?.optional_terms || [];
+  const appliedRequiredTerms = payload.query_summary?.applied_required_terms || [];
+  const appliedOptionalTerms = payload.query_summary?.applied_optional_terms || [];
+  const rankingMode = payload.query_summary?.ranking_mode || "strict-required";
+  const resultCount = payload.query_summary?.result_count ?? payload.results.length;
   node.querySelector(".response-query").textContent = query;
+  node.querySelector(".response-label").textContent = `Sorgu ${queryNumber}`;
   const sourceLabel = payload.query_summary?.keyword_source === "ollama-cloud"
     ? "Ollama Cloud"
     : "Yerel fallback";
-  node.querySelector(".response-summary").textContent = `${payload.query_summary.result_count} sonuç • Ana terimler: ${(payload.query_summary.keywords || []).slice(0, 6).join(", ")} • Kaynak: ${sourceLabel}`;
-  node.querySelector(".response-required").textContent = `Required terms: ${requiredTerms.length ? requiredTerms.join(", ") : "yok"}`;
-  node.querySelector(".response-optional").textContent = `Optional terms: ${optionalTerms.length ? optionalTerms.join(", ") : "yok"}`;
+  const selectedIndexes = payload.query_summary?.indexes || [];
+  const requireApc = Boolean(payload.query_summary?.require_apc);
+  node.querySelector(".response-result-count").textContent = `${resultCount} sonuç`;
+  node.querySelector(".response-ranking-mode").textContent = `Sıralama modu: ${rankingModeLabel(rankingMode)}`;
+  node.querySelector(".response-max-payment").textContent = formatPaymentLimitLabel(payload.query_summary?.max_payment_tl);
+  node.querySelector(".response-indexes").textContent = formatIndexesLabel(selectedIndexes);
+  const requireApcNode = node.querySelector(".response-require-apc");
+  requireApcNode.textContent = formatRequireApcLabel(requireApc);
+  requireApcNode.hidden = !requireApc;
+  node.querySelector(".response-source").textContent = `Kaynak: ${sourceLabel}`;
+  node.querySelector(".response-required").innerHTML = termPillsMarkup(requiredTerms);
+  node.querySelector(".response-applied-required").innerHTML = appliedRequiredMarkup(rankingMode, appliedRequiredTerms);
+  node.querySelector(".response-optional").innerHTML = termPillsMarkup(appliedOptionalTerms);
+  const downloadButton = node.querySelector("[data-download-results]");
+  const exportKey = `query-${queryNumber}`;
+  exportPayloads.set(exportKey, buildExportRequest(query, payload));
+  downloadButton.dataset.exportKey = exportKey;
   const wall = node.querySelector(".card-wall");
 
   if (!payload.results.length) {
@@ -369,7 +540,7 @@ async function submitQuery(event) {
     finishStatusFlow("done", payload);
   } catch (error) {
     appendResponseBlock(query, {
-      query_summary: { result_count: 0, keywords: [], llm: {} },
+      query_summary: { result_count: 0, llm: {}, applied_required_terms: [], applied_optional_terms: [], ranking_mode: "strict-required" },
       results: [],
     });
     finishStatusFlow("error");
@@ -399,6 +570,13 @@ stream.addEventListener("click", (event) => {
   const closeTrigger = event.target.closest("[data-close-drawer]");
   if (closeTrigger) {
     closeDrawer();
+    return;
+  }
+
+  const downloadTrigger = event.target.closest("[data-download-results]");
+  if (downloadTrigger) {
+    const exportRequest = exportPayloads.get(downloadTrigger.dataset.exportKey || "") || {};
+    downloadResultsExcel(exportRequest, downloadTrigger);
     return;
   }
 
