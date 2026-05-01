@@ -96,7 +96,7 @@ function renderPageCredit() {
 function renderVisitCounter(count) {
   if (!visitCounter) return;
   const formattedCount = Number(count || 0).toLocaleString("tr-TR");
-  visitCounter.textContent = `Bu uygulama şimdiye kadar ${formattedCount} kez görüntülendi.`;
+  visitCounter.textContent = `Toplam görüntülenme: ${formattedCount}`;
 }
 
 function getCounterValue(result) {
@@ -136,7 +136,7 @@ async function recordVisit() {
     const counterConfig = config?.counterapi;
 
     if (!counterConfig?.enabled || !counterConfig.workspace) {
-      visitCounter.textContent = "Görüntülenme sayacı henüz yapılandırılmadı.";
+      visitCounter.textContent = "Sayaç yapılandırılmadı";
       return;
     }
 
@@ -157,7 +157,7 @@ async function recordVisit() {
 
     renderVisitCounter(count);
   } catch (error) {
-    visitCounter.textContent = "Görüntülenme bilgisi şu anda alınamıyor.";
+    visitCounter.textContent = "Sayaç şu anda alınamıyor";
   }
 }
 
