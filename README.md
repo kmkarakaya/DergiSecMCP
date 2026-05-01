@@ -74,6 +74,23 @@ Tarayıcıda aç:
 http://127.0.0.1:7860
 ```
 
+## Hugging Face Spaces Görüntülenme Sayacı
+
+Uygulama ana sayfa yüklendiğinde public bir CounterAPI sayacını `+1` artırır ve dönen toplam değeri ana sayfada gösterir. Böylece sayaç Hugging Face Space container dosya sistemine bağlı kalmaz.
+
+Gerekli ayarlar:
+
+- `COUNTERAPI_WORKSPACE`: CounterAPI üzerinde oluşturduğunuz public workspace slug değeri
+- `COUNTERAPI_COUNTER_NAME`: opsiyonel; varsayılan `page-views`
+
+Bu değerler lokal ortamda shell environment değişkeni olarak, Hugging Face Spaces'ta ise Space Settings > Variables bölümünden verilebilir.
+
+Notlar:
+
+- Sayaç değeri CounterAPI tarafında tutulduğu için HF free runtime yeniden başlasa bile sıfırlanmaz.
+- Bu sayı benzersiz ziyaretçi değil, public sayfa görüntüleme sayacıdır.
+- `COUNTERAPI_WORKSPACE` tanımlı değilse ana sayfada sayaç için yapılandırma uyarısı gösterilir.
+
 ## Hızlı Kullanım Kılavuzu
 
 1. Makalenizin konusunu, anahtar kelimelerini, özetini veya hakkında bilgi almak istediğiniz derginin adını yazın.
@@ -91,6 +108,8 @@ Ollama Cloud entegrasyonu için şu ortam değişkenleri desteklenir:
 - `OLLAMA_HOST`: varsayılan `https://ollama.com`
 - `OLLAMA_MODEL`: varsayılan `gpt-oss:120b`
 - `OLLAMA_JUDGE_ENABLED`: varsayılan `1`; `0` yapılırsa shortlist sonrası Ollama judge rerank kapatılır
+- `COUNTERAPI_WORKSPACE`: public CounterAPI workspace slug değeri
+- `COUNTERAPI_COUNTER_NAME`: görüntülenme sayacı adı; varsayılan `page-views`
 
 `OLLAMA_API_KEY` yoksa veya model yanıtı alınamazsa uygulama yerel term fallback ve yerel shortlist sıralaması ile devam eder.
 
@@ -102,6 +121,7 @@ Geliştirme notu:
 
 - `GET /`: tek sayfalık arayüz
 - `GET /health`: sağlık kontrolü, `{"status":"ok"}` döndürür
+- `GET /client-config`: istemci tarafında kullanılacak public yapılandırmayı döndürür
 - `GET /filters`: indeks ve maksimum destek miktarı seçeneklerini döndürür
 - `POST /recommend`: sorgu, filtreler ve limit ile dergi önerileri döndürür
 - `POST /export-results`: mevcut sorgu bloğundaki sonuç kümesini veya aynı filtrelerle oluşan tüm sonucu Excel olarak döndürür
@@ -191,8 +211,10 @@ Neler yapar:
 - `git-xet` kurulumunu doğrular
 - Docker image build eder
 - container açıp `/health` endpointini test eder
-- Space reposunu senkronize eder
+- Space reposunu geçici bir klasöre clone eder
+- proje dosyalarını bu geçici clone içine senkronize eder
 - değişiklik varsa commit ve push yapar
+- deploy bitince geçici klasörü siler
 
 Temel kullanım:
 
@@ -211,6 +233,8 @@ Docker kontrolünü atlayarak:
 ```powershell
 push_hf_space.bat /skip-docker-check
 ```
+
+Not: Script artık `C:\Codes\dergitarama-space` gibi kalıcı bir yerel Space klasörü kullanmaz. Hugging Face Space reposu yalnızca deploy sırasında geçici bir klasöre clone edilir ve işlem sonunda silinir.
 
 ## Proje Dosyaları
 

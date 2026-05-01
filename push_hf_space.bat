@@ -2,10 +2,10 @@
 setlocal EnableExtensions EnableDelayedExpansion
 
 set "SPACE_REPO=https://huggingface.co/spaces/kmkarakaya/dergitarama"
-set "SPACE_DIR=C:\Codes\dergitarama-space"
 set "COMMIT_MESSAGE=Deploy Murat Karakaya Akademi Dergi Tarama to HF Space"
 set "SOURCE_DIR=%~dp0"
 set "WORK_DIR="
+set "TEMP_WORK_DIR_CREATED=0"
 set "DRY_RUN=0"
 set "SKIP_DOCKER_CHECK=0"
 set "GIT_XET_PATH=C:\Program Files\Git-Xet"
@@ -37,8 +37,7 @@ if /I "%~1"=="/skip-docker-check" (
 
 set /a POSITIONAL_INDEX+=1
 if %POSITIONAL_INDEX%==1 set "SPACE_REPO=%~1"
-if %POSITIONAL_INDEX%==2 set "SPACE_DIR=%~1"
-if %POSITIONAL_INDEX%==3 set "COMMIT_MESSAGE=%~1"
+if %POSITIONAL_INDEX%==2 set "COMMIT_MESSAGE=%~1"
 shift
 goto :parse_args
 
@@ -91,7 +90,6 @@ findstr /B /C:"app_port: 7860" "%SOURCE_DIR%\README.md" >nul || (
 
 echo Source repo : %SOURCE_DIR%
 echo HF Space    : %SPACE_REPO%
-echo Target dir  : %SPACE_DIR%
 echo Commit msg  : %COMMIT_MESSAGE%
 
 if "%DRY_RUN%"=="1" (
@@ -136,29 +134,15 @@ if "%SKIP_DOCKER_CHECK%"=="1" (
 )
 
 echo.
-echo [3/7] Preparing local HF Space clone...
-set "WORK_DIR=%SPACE_DIR%"
-if exist "%SPACE_DIR%\.git" (
-    for /f "delims=" %%I in ('git -C "%SPACE_DIR%" remote get-url origin 2^>nul') do set "CURRENT_REMOTE=%%I"
-    if not defined CURRENT_REMOTE (
-        echo ERROR: %SPACE_DIR% exists but is not a valid git repository.
-        exit /b 1
-    )
-    if /I not "!CURRENT_REMOTE!"=="%SPACE_REPO%" (
-        echo ERROR: Existing repository remote does not match target Space.
-        echo Found  : !CURRENT_REMOTE!
-        echo Expect : %SPACE_REPO%
-        exit /b 1
-    )
-) else if exist "%SPACE_DIR%\*" (
-    set "WORK_DIR=%TEMP%\hf-space-%RANDOM%%RANDOM%"
-    echo Target directory exists without git metadata. Using temporary clone workspace:
-    echo !WORK_DIR!
-    git clone "%SPACE_REPO%" "!WORK_DIR!" || exit /b 1
-) else (
-    echo Cloning Space repository...
-    git clone "%SPACE_REPO%" "%SPACE_DIR%" || exit /b 1
-)
+echo [3/7] Preparing temporary HF Space clone...
+set "WORK_DIR=%TEMP%\hf-space-%RANDOM%%RANDOM%"
+set "TEMP_WORK_DIR_CREATED=1"
+echo Temporary dir: %WORK_DIR%
+git clone "%SPACE_REPO%" "%WORK_DIR%" || goto :fail_cleanup
+git -C "%WORK_DIR%" fetch origin || goto :fail_cleanup
+git -C "%WORK_DIR%" checkout main || goto :fail_cleanup
+git -C "%WORK_DIR%" reset --hard origin/main || goto :fail_cleanup
+git -C "%WORK_DIR%" clean -fd || goto :fail_cleanup
 
 echo.
 echo [4/7] Syncing files to Space working tree...
@@ -166,8 +150,7 @@ robocopy "%SOURCE_DIR%" "%WORK_DIR%" /MIR /XD .git .venv __pycache__ .pytest_cac
 set "ROBOCOPY_EXIT=%ERRORLEVEL%"
 if %ROBOCOPY_EXIT% GEQ 8 (
     echo ERROR: robocopy failed with exit code %ROBOCOPY_EXIT%.
-    if /I not "%WORK_DIR%"=="%SPACE_DIR%" rmdir /S /Q "%WORK_DIR%" 2>nul
-    exit /b %ROBOCOPY_EXIT%
+    goto :robocopy_fail
 )
 
 del /Q "%WORK_DIR%\~$*.xlsx" 2>nul
@@ -185,28 +168,24 @@ for /f "delims=" %%I in ('git status --porcelain') do (
 if "%HAS_CHANGES%"=="0" (
     echo No changes detected. Nothing to commit.
     popd
-    if /I not "%WORK_DIR%"=="%SPACE_DIR%" rmdir /S /Q "%WORK_DIR%" 2>nul
-    exit /b 0
+    goto :success_cleanup
 )
 
 echo.
 echo [6/7] Creating commit...
 git add . || (
     popd
-    if /I not "%WORK_DIR%"=="%SPACE_DIR%" rmdir /S /Q "%WORK_DIR%" 2>nul
-    exit /b 1
+    goto :fail_cleanup
 )
 git diff --cached --quiet && (
     echo No staged changes detected after sync. Nothing to commit.
     popd
-    if /I not "%WORK_DIR%"=="%SPACE_DIR%" rmdir /S /Q "%WORK_DIR%" 2>nul
-    exit /b 0
+    goto :success_cleanup
 )
 git commit -m "%COMMIT_MESSAGE%" || (
     echo ERROR: git commit failed.
     popd
-    if /I not "%WORK_DIR%"=="%SPACE_DIR%" rmdir /S /Q "%WORK_DIR%" 2>nul
-    exit /b 1
+    goto :fail_cleanup
 )
 
 echo.
@@ -214,24 +193,39 @@ echo [7/7] Pushing to Hugging Face Space...
 git push origin HEAD || (
     echo ERROR: git push failed.
     popd
-    if /I not "%WORK_DIR%"=="%SPACE_DIR%" rmdir /S /Q "%WORK_DIR%" 2>nul
-    exit /b 1
+    goto :fail_cleanup
 )
 
 popd
-if /I not "%WORK_DIR%"=="%SPACE_DIR%" rmdir /S /Q "%WORK_DIR%" 2>nul
+call :cleanup_work_dir
 echo.
 echo Done. Check build logs at:
 echo %SPACE_REPO%
 exit /b 0
 
+:robocopy_fail
+call :cleanup_work_dir
+exit /b %ROBOCOPY_EXIT%
+
+:fail_cleanup
+call :cleanup_work_dir
+exit /b 1
+
+:success_cleanup
+call :cleanup_work_dir
+exit /b 0
+
+:cleanup_work_dir
+if "%TEMP_WORK_DIR_CREATED%"=="1" if defined WORK_DIR if exist "%WORK_DIR%" rmdir /S /Q "%WORK_DIR%" 2>nul
+exit /b 0
+
 :help
 echo Usage:
-echo   push_hf_space.bat [/dry-run] [/skip-docker-check] [space_repo] [space_dir] [commit_message]
+echo   push_hf_space.bat [/dry-run] [/skip-docker-check] [space_repo] [commit_message]
 echo.
 echo Examples:
 echo   push_hf_space.bat
 echo   push_hf_space.bat /dry-run
 echo   push_hf_space.bat /skip-docker-check
-echo   push_hf_space.bat https://huggingface.co/spaces/kmkarakaya/dergitarama C:\Codes\dergitarama-space "Deploy latest app"
+echo   push_hf_space.bat https://huggingface.co/spaces/kmkarakaya/dergitarama "Deploy latest app"
 exit /b 0

@@ -10,6 +10,7 @@ const statusSteps = document.getElementById("status-steps");
 const maxPaymentSelect = document.getElementById("max-payment");
 const indexFilterSelect = document.getElementById("index-filter");
 const pageCredits = document.querySelectorAll("[data-version-stamp]");
+const visitCounter = document.getElementById("visit-counter");
 
 const STATUS_PHASES = [
   {
@@ -71,6 +72,7 @@ const STATUS_FINAL_PHASE_ROTATION = [
 let statusTimer = null;
 let statusPhaseIndex = 0;
 let statusDotFrame = 0;
+let clientConfigPromise = null;
 
 function buildVersionStamp(date = new Date()) {
   const pad = (value) => String(value).padStart(2, "0");
@@ -89,6 +91,74 @@ function renderPageCredit() {
   pageCredits.forEach((node) => {
     node.textContent = creditText;
   });
+}
+
+function renderVisitCounter(count) {
+  if (!visitCounter) return;
+  const formattedCount = Number(count || 0).toLocaleString("tr-TR");
+  visitCounter.textContent = `Bu uygulama şimdiye kadar ${formattedCount} kez görüntülendi.`;
+}
+
+function getCounterValue(result) {
+  const data = result?.data || result;
+  if (!data) return null;
+
+  if (typeof result?.value === "number") {
+    return result.value;
+  }
+
+  const upCount = Number(data.up_count || 0);
+  const downCount = Number(data.down_count || 0);
+  if (Number.isFinite(upCount) && Number.isFinite(downCount)) {
+    return upCount - downCount;
+  }
+
+  return null;
+}
+
+async function loadClientConfig() {
+  if (!clientConfigPromise) {
+    clientConfigPromise = fetch("/client-config").then(async (response) => {
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      return response.json();
+    });
+  }
+
+  return clientConfigPromise;
+}
+
+async function recordVisit() {
+  if (!visitCounter) return;
+  try {
+    const config = await loadClientConfig();
+    const counterConfig = config?.counterapi;
+
+    if (!counterConfig?.enabled || !counterConfig.workspace) {
+      visitCounter.textContent = "Görüntülenme sayacı henüz yapılandırılmadı.";
+      return;
+    }
+
+    if (typeof Counter === "undefined") {
+      throw new Error("CounterAPI library not loaded");
+    }
+
+    const counter = new Counter({
+      workspace: counterConfig.workspace,
+      timeout: 5000,
+    });
+    const result = await counter.up(counterConfig.counter_name || "page-views");
+    const count = getCounterValue(result);
+
+    if (!Number.isFinite(count)) {
+      throw new Error("CounterAPI response missing numeric count");
+    }
+
+    renderVisitCounter(count);
+  } catch (error) {
+    visitCounter.textContent = "Görüntülenme bilgisi şu anda alınamıyor.";
+  }
 }
 
 function formatPaymentLimitLabel(value) {
@@ -652,6 +722,7 @@ async function submitQuery(event) {
 }
 
 renderPageCredit();
+recordVisit();
 loadFilterOptions();
 
 function openDrawer(result) {

@@ -24,6 +24,8 @@ from journal_engine import prepare_scope_review_candidates
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
+COUNTERAPI_WORKSPACE = os.environ.get("COUNTERAPI_WORKSPACE", "").strip()
+COUNTERAPI_COUNTER_NAME = os.environ.get("COUNTERAPI_COUNTER_NAME", "page-views").strip() or "page-views"
 
 DEFAULT_INDEXES: list[str] = []
 DEFAULT_APC_PROVIDERS = ["elsevier", "wiley"]
@@ -968,6 +970,17 @@ def filters() -> dict[str, Any]:
             "max": max(payment_values) if payment_values else None,
             "step": 10000,
         },
+    }
+
+
+@app.get("/client-config")
+def client_config() -> dict[str, Any]:
+    return {
+        "counterapi": {
+            "enabled": bool(COUNTERAPI_WORKSPACE),
+            "workspace": COUNTERAPI_WORKSPACE or None,
+            "counter_name": COUNTERAPI_COUNTER_NAME,
+        }
     }
 
 
