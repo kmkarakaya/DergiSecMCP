@@ -154,9 +154,9 @@ curl -X POST http://127.0.0.1:7860/recommend ^
 Uygulama aramayı dört aşamada yapar:
 
 1. Ollama Cloud veya yerel fallback ile, dergi başlıklarında geçmesi muhtemel İngilizce arama terimleri çıkarılır.
-2. UBYT/APC kapalı veri kümesi içinde title matching ve metadata filtreleri ile yerel aday havuzu oluşturulur.
-3. Uygunsa aynı aday havuzu Ollama judge'e verilerek yeniden sıralanır; başarısız olursa yerel sıra korunur.
-4. APC kayıtları bağlanır, kart payload'i hazırlanır ve aynı sonuç kümesi için Excel export verisi üretilir.
+2. Kapalı UBYT/APC veri kümesi içinde title matching, indeks/APC/ödeme gibi metadata filtreleri ve APC eşleşmeleri ile yerel aday havuzu oluşturulur.
+3. İlk sıkı `required_terms` araması sonuç vermezse, bu terimler opsiyonel tarafa taşınarak daha gevşek bir ikinci tarama yapılır; ardından export dışı akışta uygunsa aynı shortlist Ollama judge'e verilerek yeniden sıralanır, başarısız olursa yerel sıra korunur.
+4. Son shortlist'ten kart payload'i, drawer detayları ve aynı sonuç kümesi için Excel export verisi üretilir.
 
 Varsayılan davranışlar:
 
