@@ -10,6 +10,8 @@ app_port: 7860
 
 Murat Karakaya Akademi Dergi Tarama, UBYT 2026 dergi listesi ile APC destek kayıtlarını birleştirerek akademisyenlere uygun dergi önermeye odaklanan tek sayfalık bir web uygulamasıdır.
 
+Canli uygulama: [https://huggingface.co/spaces/kmkarakaya/dergitarama](https://huggingface.co/spaces/kmkarakaya/dergitarama)
+
 ![Murat Karakaya Akademi Dergi Tarama workflow](workflow1.0.png)
 
 Bu repo iki kullanım yolu sunar:
